@@ -6,7 +6,7 @@
 
 use crate::route::{serve_help, serve_lava, LavaParams, Route, SessionMsg};
 use crate::tracker::{ConnSlot, ConnTracker};
-use crate::ServerConfig;
+use crate::Config;
 use lava_engine::parse_input;
 use russh::keys::ssh_key::PublicKey;
 use russh::server::{Auth, Handler, Msg, Server, Session as RusshSession};
@@ -20,7 +20,7 @@ const MAX_COLS: u16 = 512;
 const MAX_ROWS: u16 = 256;
 
 pub(crate) struct LavaServer {
-    pub config: Arc<ServerConfig>,
+    pub config: Arc<Config>,
     pub tracker: Arc<ConnTracker>,
 }
 
@@ -45,7 +45,7 @@ impl Server for LavaServer {
 }
 
 pub(crate) struct LavaHandler {
-    config: Arc<ServerConfig>,
+    config: Arc<Config>,
     tracker: Arc<ConnTracker>,
     peer: Option<SocketAddr>,
     /// Held while the session is live; releases the connection slot on drop.

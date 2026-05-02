@@ -13,7 +13,6 @@ use axum::{
     routing::get,
     Router,
 };
-use std::env;
 use std::net::SocketAddr;
 use tracing::info;
 
@@ -22,20 +21,14 @@ const LAVA_JS: &[u8] = include_bytes!("../static/lava.js");
 const WASM_JS: &[u8] = include_bytes!("../../lava-wasm/pkg/lava_wasm.js");
 const WASM_BG: &[u8] = include_bytes!("../../lava-wasm/pkg/lava_wasm_bg.wasm");
 
+/// User-facing config. Constructed by the binary entrypoint (env, CLI flags,
+/// hardcoded for tests, etc.) and passed to [`run`].
 #[derive(Clone, Debug)]
-pub struct WebConfig {
+pub struct Config {
     pub port: u16,
 }
 
-pub fn config_from_env() -> WebConfig {
-    let port = env::var("LAVA_WEB_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(8080);
-    WebConfig { port }
-}
-
-pub async fn run(cfg: WebConfig) -> Result<()> {
+pub async fn run(cfg: Config) -> Result<()> {
     let app = Router::new()
         .route("/", get(index))
         .route("/{palette}", get(index_with_palette))

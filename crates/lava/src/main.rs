@@ -1,10 +1,12 @@
 //! `lava` — single-binary entrypoint that runs the SSH server and the
-//! static web server side by side. Pure plumbing: read each subsystem's
-//! env config, init logging once, then `tokio::try_join!` both. Deploys
-//! as a single self-contained executable.
+//! static web server side by side. The libs are env-agnostic — this binary
+//! reads the environment, builds typed configs, inits logging once, then
+//! `tokio::try_join!`s both servers. Single self-contained executable.
 
 use anyhow::Result;
 use std::io::IsTerminal;
+use std::path::PathBuf;
+use std::time::Duration;
 
 fn init_logging() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
@@ -18,13 +20,30 @@ fn init_logging() {
     }
 }
 
+fn parse_env<T: std::str::FromStr>(key: &str) -> Option<T> {
+    std::env::var(key).ok().and_then(|s| s.parse().ok())
+}
+
+fn ssh_config() -> lava_ssh::Config {
+    lava_ssh::Config {
+        port: parse_env::<u16>("LAVA_PORT").unwrap_or(2222),
+        host_key: std::env::var("LAVA_HOST_KEY")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("./host_key")),
+        max_conn_time: Duration::from_secs(parse_env::<u64>("LAVA_MAX_CONN_TIME").unwrap_or(300)),
+        max_per_ip: parse_env::<usize>("LAVA_MAX_PER_IP").unwrap_or(3),
+    }
+}
+
+fn web_config() -> lava_web::Config {
+    lava_web::Config {
+        port: parse_env::<u16>("LAVA_WEB_PORT").unwrap_or(8080),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     init_logging();
-
-    let ssh_cfg = lava_ssh::config_from_env();
-    let web_cfg = lava_web::config_from_env();
-
-    tokio::try_join!(lava_ssh::run(ssh_cfg), lava_web::run(web_cfg))?;
+    tokio::try_join!(lava_ssh::run(ssh_config()), lava_web::run(web_config()))?;
     Ok(())
 }

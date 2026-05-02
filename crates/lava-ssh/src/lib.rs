@@ -12,8 +12,7 @@ mod tracker;
 
 use anyhow::{Context, Result};
 use russh::keys::PrivateKey;
-use russh::server::{Config, Server};
-use std::env;
+use russh::server::{Config as RusshConfig, Server};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,33 +24,20 @@ const PRE_SHELL_TIMEOUT: Duration = Duration::from_secs(30);
 // we discard most client input and never grant more credit.
 const SSH_WINDOW_SIZE: u32 = 32 * 1024;
 
-/// User-facing config, sourced from env vars.
+/// User-facing config. Constructed by the binary entrypoint (env, CLI flags,
+/// hardcoded for tests, etc.) and passed to [`run`].
 #[derive(Clone, Debug)]
-pub struct ServerConfig {
+pub struct Config {
     pub port: u16,
     pub host_key: PathBuf,
     pub max_conn_time: Duration,
     pub max_per_ip: usize,
 }
 
-pub fn config_from_env() -> ServerConfig {
-    fn parse<T: std::str::FromStr>(key: &str) -> Option<T> {
-        env::var(key).ok().and_then(|s| s.parse().ok())
-    }
-    ServerConfig {
-        port: parse::<u16>("LAVA_PORT").unwrap_or(2222),
-        host_key: env::var("LAVA_HOST_KEY")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("./host_key")),
-        max_conn_time: Duration::from_secs(parse::<u64>("LAVA_MAX_CONN_TIME").unwrap_or(300)),
-        max_per_ip: parse::<usize>("LAVA_MAX_PER_IP").unwrap_or(3),
-    }
-}
-
 /// Run the SSH server until it stops accepting connections (typically never).
 /// Logging is the caller's responsibility — set up a `tracing` subscriber
 /// before calling.
-pub async fn run(cfg: ServerConfig) -> Result<()> {
+pub async fn run(cfg: Config) -> Result<()> {
     let key: PrivateKey = russh::keys::load_secret_key(&cfg.host_key, None).with_context(|| {
         format!(
             "loading host key from {} (generate with: ssh-keygen -t ed25519 -f {} -N '')",
@@ -60,7 +46,7 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         )
     })?;
 
-    let russh_cfg = Arc::new(Config {
+    let russh_cfg = Arc::new(RusshConfig {
         keys: vec![key],
         inactivity_timeout: Some(PRE_SHELL_TIMEOUT),
         window_size: SSH_WINDOW_SIZE,
