@@ -13,7 +13,6 @@ mod tracker;
 use anyhow::{Context, Result};
 use russh::keys::PrivateKey;
 use russh::server::{Config as RusshConfig, Server};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
@@ -29,7 +28,11 @@ const SSH_WINDOW_SIZE: u32 = 32 * 1024;
 #[derive(Clone, Debug)]
 pub struct Config {
     pub port: u16,
-    pub host_key: PathBuf,
+    /// OpenSSH-format private host key, as the literal text of the file.
+    /// Caller is responsible for sourcing it (env, secret manager, …).
+    pub host_key: String,
+    /// Passphrase for `host_key`, if it's encrypted. `None` for plaintext keys.
+    pub host_key_password: Option<String>,
     pub max_conn_time: Duration,
     pub max_per_ip: usize,
 }
@@ -38,13 +41,9 @@ pub struct Config {
 /// Logging is the caller's responsibility — set up a `tracing` subscriber
 /// before calling.
 pub async fn run(cfg: Config) -> Result<()> {
-    let key: PrivateKey = russh::keys::load_secret_key(&cfg.host_key, None).with_context(|| {
-        format!(
-            "loading host key from {} (generate with: ssh-keygen -t ed25519 -f {} -N '')",
-            cfg.host_key.display(),
-            cfg.host_key.display(),
-        )
-    })?;
+    let key: PrivateKey =
+        russh::keys::decode_secret_key(&cfg.host_key, cfg.host_key_password.as_deref())
+            .context("unable to read ssh secret key")?;
 
     let russh_cfg = Arc::new(RusshConfig {
         keys: vec![key],

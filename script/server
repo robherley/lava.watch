@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 script/setup
 script/build-wasm
 
-export LAVA_HOST_KEY="${LAVA_HOST_KEY:-.dev/host_key}"
+export LAVA_HOST_KEY="${LAVA_HOST_KEY:-$(cat .dev/host_key)}"
 export LAVA_PORT="${LAVA_PORT:-5282}"
 export LAVA_WEB_PORT="${LAVA_WEB_PORT:-8080}"
 

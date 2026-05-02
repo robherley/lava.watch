@@ -57,14 +57,15 @@ connection slot consumed).
 
 All env vars; both transports read what they need from the same environment.
 
-| Var                  | Type   | Default          | Used by    | Description                          |
-|----------------------|--------|------------------|------------|--------------------------------------|
-| `LAVA_PORT`          | u16    | `2222`           | ssh        | SSH listen port                      |
-| `LAVA_HOST_KEY`      | path   | `./host_key`     | ssh        | OpenSSH-format private host key      |
-| `LAVA_MAX_CONN_TIME` | u64    | `300`            | ssh        | Hard session timeout, in seconds     |
-| `LAVA_MAX_PER_IP`    | usize  | `3`              | ssh        | Concurrent SSH connections per IP    |
-| `LAVA_WEB_PORT`      | u16    | `8080`           | web        | HTTP listen port                     |
-| `RUST_LOG`           | string | `lava=info,…`    | both       | tracing-subscriber filter            |
+| Var                     | Type   | Default          | Used by    | Description                                                                |
+|-------------------------|--------|------------------|------------|----------------------------------------------------------------------------|
+| `LAVA_PORT`             | u16    | `2222`           | ssh        | SSH listen port                                                            |
+| `LAVA_HOST_KEY`         | string | *(required)*     | ssh        | Contents of an OpenSSH-format private host key (not a path)            |
+| `LAVA_HOST_KEY_PASSWORD`| string | *(none)*         | ssh        | Passphrase for `LAVA_HOST_KEY` if it's encrypted                           |
+| `LAVA_MAX_CONN_TIME`    | u64    | `300`            | ssh        | Hard session timeout, in seconds                                           |
+| `LAVA_MAX_PER_IP`       | usize  | `3`              | ssh        | Concurrent SSH connections per IP                                          |
+| `LAVA_WEB_PORT`         | u16    | `8080`           | web        | HTTP listen port                                                           |
+| `RUST_LOG`              | string | `lava=info,…`    | both       | tracing-subscriber filter                                                  |
 
 Logs are pretty-printed when stdout is a TTY and JSON otherwise. SSH events
 include `peer` (IP:port), `cols`/`rows`, `term` (client `$TERM`), `banner`

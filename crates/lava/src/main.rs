@@ -5,7 +5,6 @@
 
 use anyhow::Result;
 use std::io::IsTerminal;
-use std::path::PathBuf;
 use std::time::Duration;
 
 fn init_logging() {
@@ -27,9 +26,8 @@ fn parse_env<T: std::str::FromStr>(key: &str) -> Option<T> {
 fn ssh_config() -> lava_ssh::Config {
     lava_ssh::Config {
         port: parse_env::<u16>("LAVA_PORT").unwrap_or(2222),
-        host_key: std::env::var("LAVA_HOST_KEY")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("./host_key")),
+        host_key: std::env::var("LAVA_HOST_KEY").unwrap_or_default(),
+        host_key_password: std::env::var("LAVA_HOST_KEY_PASSWORD").ok(),
         max_conn_time: Duration::from_secs(parse_env::<u64>("LAVA_MAX_CONN_TIME").unwrap_or(300)),
         max_per_ip: parse_env::<usize>("LAVA_MAX_PER_IP").unwrap_or(3),
     }
