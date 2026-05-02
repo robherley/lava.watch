@@ -11,4 +11,4 @@ members = [
 [workspace.package]
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/robherley/lava"
+repository = "https://github.com/robherley/lava.watch"
