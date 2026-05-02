@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/lava-engine"]
+members = ["crates/lava-engine", "crates/lava-ssh"]
 
 [workspace.package]
 edition = "2021"

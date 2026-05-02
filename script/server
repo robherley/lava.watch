@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# script/server: start the lava SSH server for local development.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+script/setup
+
+export LAVA_HOST_KEY="${LAVA_HOST_KEY:-.dev/host_key}"
+export LAVA_PORT="${LAVA_PORT:-5282}"
+
+exec cargo run --release -p lava-ssh

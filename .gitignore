@@ -70,3 +70,6 @@ Cargo.lock
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/rust,macos,visualstudiocode
+### Project ###
+# Local development artifacts (host keys, etc)
+.dev/

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# script/setup: prepare the project for local development.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+mkdir -p .dev
+
+if [ ! -f .dev/host_key ]; then
+  echo "generating dev SSH host key → .dev/host_key"
+  ssh-keygen -t ed25519 -f .dev/host_key -N "" -C "lava-dev" >/dev/null
+fi

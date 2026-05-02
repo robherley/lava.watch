@@ -5,7 +5,7 @@
 //!   q / Esc  quit
 //!
 //! Env knobs (all optional):
-//!   LAVA_PALETTE=classic|ocean|toxic|sunset|mono
+//!   LAVA_PALETTE=classic|ocean|...
 //!   LAVA_BLOBS=<u32>
 //!   LAVA_SPEED=<f32>
 //!   LAVA_SEED=<u64>
