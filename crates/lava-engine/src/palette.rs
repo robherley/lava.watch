@@ -33,15 +33,39 @@ impl Palette {
     ];
 
     pub fn name(&self) -> &'static str {
+        self.input_names()[0]
+    }
+
+    /// A single representative RGB swatch for this palette — the mid-tier
+    /// "warm" color, useful for rendering the palette's name in its own
+    /// color (e.g. in a help listing).
+    pub fn accent(&self) -> (u8, u8, u8) {
+        let (r, g, b) = self.colors().warm;
+        (r as u8, g as u8, b as u8)
+    }
+
+    /// A complementary background swatch for this palette — the deep
+    /// "cool" color, paired with [`Palette::accent`] for badge-style UI
+    /// (palette name on a dark themed background).
+    pub fn accent_bg(&self) -> (u8, u8, u8) {
+        let (r, g, b) = self.colors().cool;
+        (r as u8, g as u8, b as u8)
+    }
+
+    /// All accepted input strings for this palette, lowercase. The first
+    /// entry is the canonical name; the rest are aliases. This is the single
+    /// source of truth used by both [`FromStr`] and any consumer that needs
+    /// to enumerate names (e.g. the help doc served by `lava-ssh`).
+    pub fn input_names(&self) -> &'static [&'static str] {
         match self {
-            Palette::Classic => "classic",
-            Palette::Toxic => "toxic",
-            Palette::Bubblegum => "bubblegum",
-            Palette::Mono => "mono",
-            Palette::Aurora => "aurora",
-            Palette::Ocean => "ocean",
-            Palette::Blood => "blood",
-            Palette::Ultraviolet => "ultraviolet",
+            Palette::Classic => &["classic", "lava", "default"],
+            Palette::Toxic => &["toxic", "green", "radioactive"],
+            Palette::Bubblegum => &["bubblegum", "pink", "magenta"],
+            Palette::Mono => &["mono", "gray", "grey"],
+            Palette::Aurora => &["aurora", "northern", "borealis"],
+            Palette::Ocean => &["ocean", "cobalt", "electric", "ice"],
+            Palette::Blood => &["blood", "crimson", "gore"],
+            Palette::Ultraviolet => &["ultraviolet", "uv", "blacklight"],
         }
     }
 
@@ -124,7 +148,14 @@ pub struct ParsePaletteError;
 
 impl std::fmt::Display for ParsePaletteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "unknown palette (try: classic, toxic, bubblegum, mono, aurora, ocean, blood, ultraviolet)")
+        write!(f, "unknown palette (try: ")?;
+        for (i, p) in Palette::ALL.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            f.write_str(p.name())?;
+        }
+        write!(f, ")")
     }
 }
 
@@ -133,17 +164,13 @@ impl std::error::Error for ParsePaletteError {}
 impl FromStr for Palette {
     type Err = ParsePaletteError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "classic" | "lava" | "default" => Ok(Palette::Classic),
-            "toxic" | "green" | "radioactive" => Ok(Palette::Toxic),
-            "bubblegum" | "pink" | "magenta" => Ok(Palette::Bubblegum),
-            "mono" | "gray" | "grey" => Ok(Palette::Mono),
-            "aurora" | "northern" | "borealis" => Ok(Palette::Aurora),
-            "ocean" | "cobalt" | "electric" | "ice" => Ok(Palette::Ocean),
-            "blood" | "crimson" | "gore" => Ok(Palette::Blood),
-            "ultraviolet" | "uv" | "blacklight" => Ok(Palette::Ultraviolet),
-            _ => Err(ParsePaletteError),
+        let s = s.to_ascii_lowercase();
+        for p in Palette::ALL {
+            if p.input_names().contains(&s.as_str()) {
+                return Ok(*p);
+            }
         }
+        Err(ParsePaletteError)
     }
 }
 

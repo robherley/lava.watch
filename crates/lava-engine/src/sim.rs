@@ -155,6 +155,26 @@ impl Lava {
         }
     }
 
+    /// Bump the temperature of all blobs within `radius` pixels of `(x, y)`,
+    /// with a distance-based falloff (closer blobs get more heat). Saturates
+    /// at `temp = 1.0`. Coordinates are in the engine's pixel space — the
+    /// canvas is `width` × `height` (where `height = 2 × terminal rows`).
+    pub fn heat(&mut self, x: f32, y: f32, radius: f32) {
+        if radius <= 0.0 {
+            return;
+        }
+        let r2 = radius * radius;
+        for b in &mut self.blobs {
+            let dx = b.x - x;
+            let dy = b.y - y;
+            let d2 = dx * dx + dy * dy;
+            if d2 <= r2 {
+                let falloff = 1.0 - (d2 / r2).sqrt();
+                b.temp = (b.temp + falloff).min(1.0);
+            }
+        }
+    }
+
     /// Sample the metaball field and the temperature-weighted heat at a point.
     /// Used by renderers; not generally useful to call directly.
     pub(crate) fn sample(&self, x: f32, y: f32) -> (f32, f32) {

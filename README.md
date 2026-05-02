@@ -41,6 +41,32 @@ ssh -p 2222 localhost
 `script/server` calls `script/setup` first, which generates a dev SSH host key
 in `.dev/` (gitignored) on first run.
 
+#### Pick a palette by username
+
+The SSH username selects the palette. Aliases work too — anything that
+doesn't match falls back to `classic`.
+
+```sh
+ssh ultraviolet@localhost
+ssh aurora@localhost
+ssh toxic@localhost
+ssh ocean@localhost
+# and more!
+```
+
+Once connected, **← / →** cycles through palettes (the new name flashes
+briefly in the bottom-left), and **left-click** anywhere on nearby blobs
+to warm up and rise.
+
+For the full list of palettes + aliases, connect as `help`:
+
+```sh
+ssh help@localhost
+```
+
+This prints a colored cheat-sheet and disconnects (no PTY required, no
+connection slot consumed).
+
 #### Configuration
 
 | Var                  | Type   | Default          | Description                          |

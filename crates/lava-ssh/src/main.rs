@@ -6,7 +6,7 @@
 //! connection count is bounded.
 
 use anyhow::{Context, Result};
-use lava_engine::{term, Lava};
+use lava_engine::{term, Config as LavaConfig, Lava, Palette};
 use russh::keys::ssh_key::PublicKey;
 use russh::keys::PrivateKey;
 use russh::server::{Auth, Config, Handle, Handler, Msg, Server, Session};
@@ -26,6 +26,11 @@ const MAX_ROWS: u16 = 256;
 const FRAME_PERIOD: Duration = Duration::from_millis(33); // ~30 fps
 const PRE_SHELL_TIMEOUT: Duration = Duration::from_secs(30);
 const SSH_WINDOW_SIZE: u32 = 32 * 1024;
+const HEAT_RADIUS_PX: f32 = 12.0;
+
+// SGR mouse reporting (button events only, extended coords).
+const MOUSE_ENABLE: &[u8] = b"\x1b[?1000h\x1b[?1006h";
+const MOUSE_DISABLE: &[u8] = b"\x1b[?1006l\x1b[?1000l";
 
 // User-facing config, sourced from env vars.
 #[derive(Clone, Debug)]
@@ -113,6 +118,7 @@ impl Server for LavaServer {
             pty_size: None,
             pty_term: None,
             banner: None,
+            username: None,
             session_open: false,
             event_tx: None,
         }
@@ -128,6 +134,8 @@ struct LavaHandler {
     pty_size: Option<(u16, u16)>,
     pty_term: Option<String>,
     banner: Option<String>,
+    /// SSH username — used to pick a palette (e.g. `ssh uv@lava.watch`).
+    username: Option<String>,
     session_open: bool,
     event_tx: Option<mpsc::Sender<SessionEvent>>,
 }
@@ -135,16 +143,46 @@ struct LavaHandler {
 enum SessionEvent {
     Resize(u16, u16),
     Exit,
+    PaletteNext,
+    PalettePrev,
+    /// Left-button click at 1-indexed terminal cell (col, row).
+    Click(u16, u16),
+}
+
+/// Parse an SGR mouse press: `\x1b[<{button};{col};{row}M`.
+/// Returns `Some((col, row))` only for left-button presses.
+fn parse_mouse_press(data: &[u8]) -> Option<(u16, u16)> {
+    let s = std::str::from_utf8(data).ok()?;
+    let body = s.strip_prefix("\x1b[<")?.strip_suffix('M')?;
+    let mut parts = body.split(';');
+    let button: u32 = parts.next()?.parse().ok()?;
+    let col: u16 = parts.next()?.parse().ok()?;
+    let row: u16 = parts.next()?.parse().ok()?;
+    if parts.next().is_some() || button != 0 {
+        return None;
+    }
+    Some((col, row))
+}
+
+struct SessionParams {
+    peer: Option<SocketAddr>,
+    palette: Palette,
+    channel: ChannelId,
+    cols: u16,
+    rows: u16,
+    max_time: Duration,
 }
 
 impl Handler for LavaHandler {
     type Error = russh::Error;
 
-    async fn auth_none(&mut self, _user: &str) -> Result<Auth, Self::Error> {
+    async fn auth_none(&mut self, user: &str) -> Result<Auth, Self::Error> {
+        self.username = Some(user.to_string());
         Ok(Auth::Accept)
     }
 
-    async fn auth_publickey(&mut self, _user: &str, _key: &PublicKey) -> Result<Auth, Self::Error> {
+    async fn auth_publickey(&mut self, user: &str, _key: &PublicKey) -> Result<Auth, Self::Error> {
+        self.username = Some(user.to_string());
         Ok(Auth::Accept)
     }
 
@@ -191,6 +229,18 @@ impl Handler for LavaHandler {
         channel: ChannelId,
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        // `ssh help@lava.watch` prints a help doc and disconnects — no PTY
+        // required, no connection slot consumed.
+        if self.username.as_deref() == Some("help") {
+            info!(peer = ?self.peer, "help requested");
+            let handle = session.handle();
+            tokio::spawn(async move {
+                let _ = handle.data(channel, help_text()).await;
+                let _ = handle.close(channel).await;
+            });
+            return Ok(());
+        }
+
         let Some((cols, rows)) = self.pty_size else {
             // Shell without a PTY makes no sense for us.
             return Ok(());
@@ -217,6 +267,14 @@ impl Handler for LavaHandler {
 
         self.slot = Some(slot);
 
+        // Username doubles as a palette selector (`ssh uv@lava.watch`).
+        // Anything that doesn't parse falls back to the default palette.
+        let palette = self
+            .username
+            .as_deref()
+            .and_then(|u| u.parse::<Palette>().ok())
+            .unwrap_or_default();
+
         let (tx, rx) = mpsc::channel(4);
         self.event_tx = Some(tx);
         let max_time = self.config.max_conn_time;
@@ -227,10 +285,20 @@ impl Handler for LavaHandler {
             rows,
             term = ?self.pty_term,
             banner = ?self.banner,
+            user = ?self.username,
+            palette = palette.name(),
             "session start"
         );
+        let params = SessionParams {
+            peer,
+            palette,
+            channel,
+            cols,
+            rows,
+            max_time,
+        };
         tokio::spawn(async move {
-            run_session(peer, handle, channel, cols, rows, max_time, rx).await;
+            run_session(params, handle, rx).await;
         });
 
         Ok(())
@@ -254,18 +322,26 @@ impl Handler for LavaHandler {
         Ok(())
     }
 
-    // We don't buffer keystrokes, but watch for Ctrl-C / Ctrl-D so the client
-    // can disconnect — without this they'd have to use the SSH escape (`~.`).
+    // We don't buffer keystrokes, but watch a few inputs:
+    //   ← / →           cycle palette
+    //   Ctrl-C / Ctrl-D disconnect
     async fn data(
         &mut self,
         _channel: ChannelId,
         data: &[u8],
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
-        // 0x03 = Ctrl-C (ETX), 0x04 = Ctrl-D (EOT).
-        if data.iter().any(|&b| b == 0x03 || b == 0x04) {
+        let event = match data {
+            // CSI / SS3 forms of the right and left arrow keys.
+            b"\x1b[C" | b"\x1bOC" => Some(SessionEvent::PaletteNext),
+            b"\x1b[D" | b"\x1bOD" => Some(SessionEvent::PalettePrev),
+            // 0x03 = Ctrl-C (ETX), 0x04 = Ctrl-D (EOT).
+            _ if data.iter().any(|&b| b == 0x03 || b == 0x04) => Some(SessionEvent::Exit),
+            _ => parse_mouse_press(data).map(|(c, r)| SessionEvent::Click(c, r)),
+        };
+        if let Some(ev) = event {
             if let Some(tx) = &self.event_tx {
-                let _ = tx.try_send(SessionEvent::Exit);
+                let _ = tx.try_send(ev);
             }
         }
         Ok(())
@@ -318,20 +394,74 @@ impl Handler for LavaHandler {
     }
 }
 
+/// Build the doc shown to clients connecting as `help@lava.watch` —
+/// lists the palette usernames in their own color (bold) and one example.
+fn help_text() -> Vec<u8> {
+    use std::fmt::Write as _;
+    let mut s = String::new();
+    let width = Palette::ALL
+        .iter()
+        .map(|p| p.name().len())
+        .max()
+        .unwrap_or(0);
+    write!(s, "\r\n  lava — pick a palette by SSH username:\r\n\r\n").unwrap();
+    for p in Palette::ALL {
+        let names = p.input_names();
+        let canonical = names[0];
+        let aliases = &names[1..];
+        let (r, g, b) = p.accent();
+        let pad = width.saturating_sub(canonical.len());
+        write!(
+            s,
+            "    \x1b[1;38;2;{r};{g};{b}m{canonical}\x1b[0m{:pad$}",
+            "",
+        )
+        .unwrap();
+        if !aliases.is_empty() {
+            write!(s, "  (").unwrap();
+            for (i, a) in aliases.iter().enumerate() {
+                if i > 0 {
+                    write!(s, ", ").unwrap();
+                }
+                write!(s, "\x1b[1;38;2;{r};{g};{b}m{a}\x1b[0m").unwrap();
+            }
+            write!(s, ")").unwrap();
+        }
+        write!(s, "\r\n").unwrap();
+    }
+    write!(s, "\r\n  example: ssh uv@lava.watch\r\n\r\n").unwrap();
+    s.into_bytes()
+}
+
 /// Per-session frame loop. Owns a [`Lava`] and pushes ANSI frames at
 /// `FRAME_PERIOD`. Returns when the channel closes, the deadline fires, or
 /// any write fails (client disconnect).
 async fn run_session(
-    peer: Option<SocketAddr>,
+    params: SessionParams,
     handle: Handle,
-    channel: ChannelId,
-    cols: u16,
-    rows: u16,
-    max_time: Duration,
     mut event_rx: mpsc::Receiver<SessionEvent>,
 ) {
+    let SessionParams {
+        peer,
+        palette,
+        channel,
+        cols,
+        rows,
+        max_time,
+    } = params;
     let started = Instant::now();
-    let mut lava = Lava::new(cols, rows);
+    let mut rows = rows;
+    let mut palette_idx = Palette::ALL.iter().position(|p| *p == palette).unwrap_or(0);
+    // Frames remaining for the bottom-right palette overlay after a switch.
+    let mut overlay_frames: u32 = 0;
+    let mut lava = Lava::with_config(
+        cols,
+        rows,
+        LavaConfig {
+            palette,
+            ..LavaConfig::default()
+        },
+    );
 
     if handle
         .data(channel, term::ENTER_ALT_SCREEN.to_vec())
@@ -346,6 +476,7 @@ async fn run_session(
         );
         return;
     }
+    let _ = handle.data(channel, MOUSE_ENABLE.to_vec()).await;
 
     let mut buf: Vec<u8> = Vec::with_capacity(cols as usize * rows as usize * 24);
     let mut interval = tokio::time::interval(FRAME_PERIOD);
@@ -361,6 +492,17 @@ async fn run_session(
                 lava.step(FRAME_PERIOD.as_secs_f32());
                 buf.clear();
                 term::render(&lava, &mut buf);
+                if overlay_frames > 0 {
+                    let p = Palette::ALL[palette_idx];
+                    let label = format!(" {} ", p.name());
+                    let (fr, fg, fb) = p.accent();
+                    let (br, bg, bb) = p.accent_bg();
+                    let overlay = format!(
+                        "\x1b[{rows};1H\x1b[1;38;2;{fr};{fg};{fb};48;2;{br};{bg};{bb}m{label}\x1b[0m"
+                    );
+                    buf.extend_from_slice(overlay.as_bytes());
+                    overlay_frames -= 1;
+                }
                 if handle.data(channel, buf.clone()).await.is_err() {
                     reason = "disconnect";
                     break;
@@ -369,11 +511,29 @@ async fn run_session(
             Some(ev) = event_rx.recv() => match ev {
                 SessionEvent::Resize(c, r) => {
                     lava.resize(c, r);
+                    rows = r;
                     buf.reserve(c as usize * r as usize * 24);
                 }
                 SessionEvent::Exit => {
                     reason = "client_exit";
                     break;
+                }
+                SessionEvent::PaletteNext => {
+                    palette_idx = (palette_idx + 1) % Palette::ALL.len();
+                    lava.palette = Palette::ALL[palette_idx];
+                    overlay_frames = 90;
+                }
+                SessionEvent::PalettePrev => {
+                    palette_idx = (palette_idx + Palette::ALL.len() - 1) % Palette::ALL.len();
+                    lava.palette = Palette::ALL[palette_idx];
+                    overlay_frames = 90;
+                }
+                SessionEvent::Click(cx, cy) => {
+                    // Cell coords are 1-indexed; engine pixels are 0-indexed
+                    // and twice as tall as terminal rows (half-block trick).
+                    let x = cx.saturating_sub(1) as f32 + 0.5;
+                    let y = cy.saturating_sub(1) as f32 * 2.0 + 1.0;
+                    lava.heat(x, y, HEAT_RADIUS_PX);
                 }
             },
             _ = &mut deadline => {
@@ -387,6 +547,7 @@ async fn run_session(
         let bye = b"\r\n\x1b[0m  *** session timed out ***\r\n";
         let _ = handle.data(channel, bye.to_vec()).await;
     }
+    let _ = handle.data(channel, MOUSE_DISABLE.to_vec()).await;
     let _ = handle.data(channel, term::LEAVE_ALT_SCREEN.to_vec()).await;
     let _ = handle.close(channel).await;
 
@@ -419,13 +580,8 @@ async fn main() -> Result<()> {
 
     let cfg = config_from_env();
 
-    let key: PrivateKey = russh::keys::load_secret_key(&cfg.host_key, None).with_context(|| {
-        format!(
-            "loading host key from {} (generate with: ssh-keygen -t ed25519 -f {} -N '')",
-            cfg.host_key.display(),
-            cfg.host_key.display(),
-        )
-    })?;
+    let key: PrivateKey = russh::keys::load_secret_key(&cfg.host_key, None)
+        .with_context(|| format!("loading host key from {}", cfg.host_key.display()))?;
 
     let russh_cfg = Arc::new(Config {
         keys: vec![key],
