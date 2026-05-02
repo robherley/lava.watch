@@ -30,6 +30,7 @@ fn ssh_config() -> lava_ssh::Config {
         host_key_password: std::env::var("LAVA_HOST_KEY_PASSWORD").ok(),
         max_conn_time: Duration::from_secs(parse_env::<u64>("LAVA_MAX_CONN_TIME").unwrap_or(300)),
         max_per_ip: parse_env::<usize>("LAVA_MAX_PER_IP").unwrap_or(3),
+        speed: parse_env::<f32>("LAVA_SPEED").unwrap_or(0.8),
     }
 }
 

@@ -35,6 +35,8 @@ pub struct Config {
     pub host_key_password: Option<String>,
     pub max_conn_time: Duration,
     pub max_per_ip: usize,
+    /// Simulation speed multiplier passed to each [`lava_engine::Session`].
+    pub speed: f32,
 }
 
 /// Run the SSH server until it stops accepting connections (typically never).

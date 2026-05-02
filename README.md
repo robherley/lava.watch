@@ -64,6 +64,7 @@ All env vars; both transports read what they need from the same environment.
 | `LAVA_HOST_KEY_PASSWORD`| string | *(none)*         | ssh        | Passphrase for `LAVA_HOST_KEY` if it's encrypted                           |
 | `LAVA_MAX_CONN_TIME`    | u64    | `300`            | ssh        | Hard session timeout, in seconds                                           |
 | `LAVA_MAX_PER_IP`       | usize  | `3`              | ssh        | Concurrent SSH connections per IP                                          |
+| `LAVA_SPEED`            | f32    | `0.8`            | ssh        | Simulation speed multiplier (`1.0` = engine "natural" rate, lower = slower) |
 | `LAVA_WEB_PORT`         | u16    | `8080`           | web        | HTTP listen port                                                           |
 | `RUST_LOG`              | string | `lava=info,…`    | both       | tracing-subscriber filter                                                  |
 

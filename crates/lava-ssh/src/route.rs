@@ -47,6 +47,7 @@ pub(crate) struct LavaParams {
     pub cols: u16,
     pub rows: u16,
     pub max_time: Duration,
+    pub speed: f32,
 }
 
 /// Help route — write the palette doc, close the channel, done.
@@ -69,9 +70,11 @@ pub(crate) async fn serve_lava(
         cols,
         rows,
         max_time,
+        speed,
     } = params;
     let started = Instant::now();
     let mut session = Session::new(cols, rows, palette);
+    session.set_speed(speed);
 
     if handle
         .data(channel, term::ENTER_ALT_SCREEN.to_vec())
@@ -95,11 +98,21 @@ pub(crate) async fn serve_lava(
     let deadline = tokio::time::sleep(max_time);
     tokio::pin!(deadline);
 
+    // Wall-clock dt so a slow tick (CPU, network, scheduler hiccup) doesn't
+    // make the simulation fall behind real time and stutter on catch-up.
+    // Capped so a long pause (suspend, debugger, …) can't lurch the sim
+    // forward by seconds.
+    let mut last_tick = Instant::now();
+    const MAX_DT: f32 = 0.25;
+
     let reason: &'static str;
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                session.tick(FRAME_PERIOD.as_secs_f32());
+                let now = Instant::now();
+                let dt = (now - last_tick).as_secs_f32().min(MAX_DT);
+                last_tick = now;
+                session.tick(dt);
                 buf.clear();
                 session.render(&mut buf);
                 if handle.data(channel, buf.clone()).await.is_err() {

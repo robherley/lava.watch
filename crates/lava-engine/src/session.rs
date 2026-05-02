@@ -158,6 +158,12 @@ impl Session {
         self.lava.resize(cols, rows);
     }
 
+    /// Override the simulation speed multiplier. `1.0` is the engine's
+    /// "natural" rate; lower → slower, ambient; higher → frenetic.
+    pub fn set_speed(&mut self, speed: f32) {
+        self.lava.speed = speed;
+    }
+
     pub fn cycle_next(&mut self) {
         self.palette_idx = (self.palette_idx + 1) % Palette::ALL.len();
         self.lava.palette = Palette::ALL[self.palette_idx];

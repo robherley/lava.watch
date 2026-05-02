@@ -39,7 +39,7 @@ impl Default for Config {
         Self {
             palette: Palette::Classic,
             blob_count: 7,
-            speed: 1.0,
+            speed: 0.8,
             seed: 0xC0FFEE_F00D,
         }
     }
