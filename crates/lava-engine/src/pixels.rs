@@ -23,7 +23,7 @@ pub fn render(lava: &Lava, out: &mut Vec<u8>) {
         for x in 0..w {
             let (field, heat) = lava.sample(x as f32 + 0.5, y as f32 + 0.5);
             let v = (y as f32 + 0.5) / h_f;
-            let (r, g, b) = pixel_color(&pal, field, heat, v);
+            let (r, g, b) = pixel_color(&pal, field, heat, v, lava.inverted);
             out.push(r);
             out.push(g);
             out.push(b);

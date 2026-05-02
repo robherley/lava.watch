@@ -54,6 +54,8 @@ pub struct Lava {
     pub time: f32,
     pub palette: Palette,
     pub speed: f32,
+    /// When true, every rendered pixel's RGB is bit-flipped (255 − channel).
+    pub inverted: bool,
 }
 
 impl Lava {
@@ -87,6 +89,7 @@ impl Lava {
             time: 0.0,
             palette: config.palette,
             speed: config.speed,
+            inverted: false,
         }
     }
 

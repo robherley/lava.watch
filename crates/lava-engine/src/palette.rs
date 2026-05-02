@@ -189,17 +189,33 @@ pub(crate) struct PaletteColors {
 
 /// Map (palette colors, field intensity, local heat, vertical position
 /// `v ∈ [0, 1]`) → RGB. Shared by every renderer (ANSI, RGBA pixels, …).
-pub(crate) fn pixel_color(pal: &PaletteColors, field: f32, heat: f32, v: f32) -> (u8, u8, u8) {
+/// `inverted` flips every channel (255 − c) for the photographic-negative
+/// effect.
+pub(crate) fn pixel_color(
+    pal: &PaletteColors,
+    field: f32,
+    heat: f32,
+    v: f32,
+    inverted: bool,
+) -> (u8, u8, u8) {
+    let finish = |c: (u8, u8, u8)| {
+        if inverted {
+            (255 - c.0, 255 - c.1, 255 - c.2)
+        } else {
+            c
+        }
+    };
+
     let bg = lerp3(pal.bg_top, pal.bg_bot, v.clamp(0.0, 1.0));
 
     if field < 0.55 {
-        return rgb(bg);
+        return finish(rgb(bg));
     }
 
     if field < 1.0 {
         let g = (field - 0.55) / 0.45;
         let glow = lerp3(bg, pal.glow, g * 0.55);
-        return rgb(glow);
+        return finish(rgb(glow));
     }
 
     let h = heat.clamp(0.0, 1.0);
@@ -209,11 +225,11 @@ pub(crate) fn pixel_color(pal: &PaletteColors, field: f32, heat: f32, v: f32) ->
         lerp3(pal.warm, pal.hot, (h - 0.5) * 2.0)
     };
     let boost = ((field - 1.0) * 0.25).clamp(0.0, 0.4);
-    rgb((
+    finish(rgb((
         (body.0 * (1.0 + boost)).min(255.0),
         (body.1 * (1.0 + boost)).min(255.0),
         (body.2 * (1.0 + boost)).min(255.0),
-    ))
+    )))
 }
 
 /// Component-wise linear interpolation between two RGB triples.

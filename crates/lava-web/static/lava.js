@@ -58,7 +58,7 @@ const BADGE_MS = 3000;
     badgeTimer = setTimeout(() => badgeEl.classList.remove("show"), BADGE_MS);
   }
 
-  // Keyboard: ←/→ cycle palettes.
+  // Keyboard: ←/→ cycle palettes, i flips invert.
   document.addEventListener("keydown", (e) => {
     if (e.key === "ArrowRight") {
       session.cycleNext();
@@ -66,6 +66,8 @@ const BADGE_MS = 3000;
     } else if (e.key === "ArrowLeft") {
       session.cyclePrev();
       flashBadge();
+    } else if (e.key === "i" || e.key === "I") {
+      session.toggleInverted();
     }
   });
 

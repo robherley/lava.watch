@@ -20,6 +20,8 @@ const HEAT_RADIUS_PX: f32 = 12.0;
 pub enum Input {
     PaletteNext,
     PalettePrev,
+    /// Toggle the photographic-negative render.
+    ToggleInverted,
     Exit,
     /// Left-button click at a 1-indexed terminal cell.
     Click {
@@ -36,6 +38,10 @@ pub fn parse_input(data: &[u8]) -> Option<Input> {
         // CSI / SS3 right + left arrow keys.
         b"\x1b[C" | b"\x1bOC" => return Some(Input::PaletteNext),
         b"\x1b[D" | b"\x1bOD" => return Some(Input::PalettePrev),
+        // 'i' / 'I' toggle inverted render.
+        b"i" | b"I" => return Some(Input::ToggleInverted),
+        // 'q' / 'Q' quit (alongside Ctrl-C / Ctrl-D below).
+        b"q" | b"Q" => return Some(Input::Exit),
         _ => {}
     }
     // 0x03 = Ctrl-C (ETX), 0x04 = Ctrl-D (EOT) — checked anywhere in chunk.
@@ -164,6 +170,11 @@ impl Session {
         self.overlay_frames = OVERLAY_FRAMES;
     }
 
+    /// Flip the photographic-negative render flag.
+    pub fn toggle_inverted(&mut self) {
+        self.lava.inverted = !self.lava.inverted;
+    }
+
     /// Heat blobs near a 1-indexed terminal cell. Accounts for the half-block
     /// double-pixel-row mapping on the y-axis.
     pub fn click(&mut self, col: u16, row: u16) {
@@ -184,6 +195,7 @@ impl Session {
         match input {
             Input::PaletteNext => self.cycle_next(),
             Input::PalettePrev => self.cycle_prev(),
+            Input::ToggleInverted => self.toggle_inverted(),
             Input::Click { col, row } => self.click(col, row),
             Input::Exit => return true,
         }
@@ -214,6 +226,12 @@ mod tests {
     fn parse_ctrl_c_and_d() {
         assert_eq!(parse_input(b"\x03"), Some(Input::Exit));
         assert_eq!(parse_input(b"\x04"), Some(Input::Exit));
+    }
+
+    #[test]
+    fn parse_q_quits() {
+        assert_eq!(parse_input(b"q"), Some(Input::Exit));
+        assert_eq!(parse_input(b"Q"), Some(Input::Exit));
     }
 
     #[test]

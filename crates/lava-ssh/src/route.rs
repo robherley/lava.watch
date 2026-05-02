@@ -177,6 +177,10 @@ fn help_text() -> Vec<u8> {
         }
         write!(s, "\r\n").unwrap();
     }
+    write!(s, "\r\n  keys (in session):\r\n").unwrap();
+    write!(s, "    ← / →   cycle palettes\r\n").unwrap();
+    write!(s, "    i       invert colors\r\n").unwrap();
+    write!(s, "    q       quit\r\n").unwrap();
     write!(s, "\r\n  example: ssh uv@lava.watch\r\n\r\n").unwrap();
     s.into_bytes()
 }

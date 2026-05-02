@@ -45,8 +45,8 @@ pub fn render(lava: &Lava, out: &mut Vec<u8>) {
             let yb = (r * 2 + 1) as f32 + 0.5;
             let (ft, ht) = lava.sample(xt, yt);
             let (fb, hb) = lava.sample(xt, yb);
-            let top = pixel_color(&pal, ft, ht, yt / h);
-            let bot = pixel_color(&pal, fb, hb, yb / h);
+            let top = pixel_color(&pal, ft, ht, yt / h, lava.inverted);
+            let bot = pixel_color(&pal, fb, hb, yb / h, lava.inverted);
 
             if last_fg != Some(top) {
                 let _ = write!(out, "\x1b[38;2;{};{};{}m", top.0, top.1, top.2);

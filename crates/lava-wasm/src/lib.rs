@@ -104,6 +104,11 @@ impl LavaSession {
         self.inner.cycle_prev();
     }
 
+    #[wasm_bindgen(js_name = toggleInverted)]
+    pub fn toggle_inverted(&mut self) {
+        self.inner.toggle_inverted();
+    }
+
     /// Heat blobs near `(x, y)` in engine pixel coordinates. For canvas
     /// hosts: convert from canvas pixel coords with the same `(w, h)`
     /// returned by `pixelDimensions()`.
