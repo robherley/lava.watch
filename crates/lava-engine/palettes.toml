@@ -1,0 +1,87 @@
+# Each [[palette]] becomes a `Palette` enum variant + its color stops.
+# Order matters: the first entry is the default and also the cycle order
+# (left/right arrow keys walk the list).
+#
+# Color stops are `#RRGGBB` hex (case-insensitive, leading `#` optional).
+# `build.rs` parses each into an RGB triple. Add a palette by appending an
+# entry — the build script regenerates the enum + lookups.
+
+[[palette]]
+name = "classic"
+aliases = ["lava", "default"]
+bg_top = "#0a0616"
+bg_bot = "#160a20"
+glow = "#96232d"
+cool = "#73161e"
+warm = "#ff5f1e"
+hot = "#ffe65f"
+
+[[palette]]
+name = "toxic"
+aliases = ["green", "radioactive"]
+bg_top = "#081208"
+bg_bot = "#0c1c0e"
+glow = "#3c781e"
+cool = "#285a19"
+warm = "#82dc32"
+hot = "#dcff78"
+
+[[palette]]
+name = "bubblegum"
+aliases = ["pink", "magenta"]
+bg_top = "#0f0519"
+bg_bot = "#1c0a23"
+glow = "#82285a"
+cool = "#6e1e50"
+warm = "#f05a96"
+hot = "#ffc8b4"
+
+[[palette]]
+name = "mono"
+aliases = ["gray", "grey"]
+bg_top = "#08080a"
+bg_bot = "#121216"
+glow = "#3c3c46"
+cool = "#5a5a64"
+warm = "#b4b4be"
+hot = "#f0f0f5"
+
+[[palette]]
+name = "aurora"
+aliases = ["northern", "borealis"]
+bg_top = "#060e10"
+bg_bot = "#0a1416"
+glow = "#195a50"
+cool = "#145064"
+warm = "#46d2a0"
+hot = "#be8cff"
+
+[[palette]]
+name = "ocean"
+aliases = ["cobalt", "electric", "ice"]
+bg_top = "#040714"
+bg_bot = "#070c1e"
+glow = "#123796"
+cool = "#0c2878"
+warm = "#3782ff"
+hot = "#c3e1ff"
+
+[[palette]]
+name = "blood"
+aliases = ["crimson", "gore"]
+bg_top = "#0e0303"
+bg_bot = "#140404"
+glow = "#300808"
+cool = "#4b0a0a"
+warm = "#aa1616"
+hot = "#e62d2d"
+
+[[palette]]
+name = "ultraviolet"
+aliases = ["uv", "blacklight"]
+bg_top = "#0a0412"
+bg_bot = "#10061c"
+glow = "#370c64"
+cool = "#230546"
+warm = "#9628ff"
+hot = "#e1c3ff"

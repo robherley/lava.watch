@@ -1,145 +1,32 @@
 //! Named color palettes — the user-facing "vibe" knob.
 //!
-//! Each [`Palette`] resolves to a fixed set of color stops ([`PaletteColors`])
-//! that the renderer interpolates across based on metaball field intensity
-//! and local heat. To add a new palette: extend the enum, add a name + alias
-//! in `FromStr`, and add a row to [`Palette::colors`].
+//! Palette **data** lives in `palettes.toml` at the crate root; `build.rs`
+//! turns it into the [`Palette`] enum, [`Palette::ALL`], [`Palette::input_names`],
+//! and [`Palette::colors`] (`include!`'d below). Adding a palette = appending
+//! a TOML entry, no hand-edits here.
 
 use std::str::FromStr;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Palette {
-    #[default]
-    Classic,
-    Toxic,
-    Bubblegum,
-    Mono,
-    Aurora,
-    Ocean,
-    Blood,
-    Ultraviolet,
-}
+include!(concat!(env!("OUT_DIR"), "/palettes_generated.rs"));
 
 impl Palette {
-    pub const ALL: &'static [Palette] = &[
-        Palette::Classic,
-        Palette::Toxic,
-        Palette::Bubblegum,
-        Palette::Mono,
-        Palette::Aurora,
-        Palette::Ocean,
-        Palette::Blood,
-        Palette::Ultraviolet,
-    ];
-
     pub fn name(&self) -> &'static str {
         self.input_names()[0]
     }
 
     /// A single representative RGB swatch for this palette — the mid-tier
     /// "warm" color, useful for rendering the palette's name in its own
-    /// color (e.g. in a help listing).
+    /// color (help listing, badge fg, etc.).
     pub fn accent(&self) -> (u8, u8, u8) {
         let (r, g, b) = self.colors().warm;
         (r as u8, g as u8, b as u8)
     }
 
-    /// A complementary background swatch for this palette — the deep
-    /// "cool" color, paired with [`Palette::accent`] for badge-style UI
-    /// (palette name on a dark themed background).
+    /// A complementary background swatch — the deep "cool" color, paired
+    /// with [`Palette::accent`] for badge-style UI.
     pub fn accent_bg(&self) -> (u8, u8, u8) {
         let (r, g, b) = self.colors().cool;
         (r as u8, g as u8, b as u8)
-    }
-
-    /// All accepted input strings for this palette, lowercase. The first
-    /// entry is the canonical name; the rest are aliases. This is the single
-    /// source of truth used by both [`FromStr`] and any consumer that needs
-    /// to enumerate names (e.g. the help doc served by `lava-ssh`).
-    pub fn input_names(&self) -> &'static [&'static str] {
-        match self {
-            Palette::Classic => &["classic", "lava", "default"],
-            Palette::Toxic => &["toxic", "green", "radioactive"],
-            Palette::Bubblegum => &["bubblegum", "pink", "magenta"],
-            Palette::Mono => &["mono", "gray", "grey"],
-            Palette::Aurora => &["aurora", "northern", "borealis"],
-            Palette::Ocean => &["ocean", "cobalt", "electric", "ice"],
-            Palette::Blood => &["blood", "crimson", "gore"],
-            Palette::Ultraviolet => &["ultraviolet", "uv", "blacklight"],
-        }
-    }
-
-    pub(crate) fn colors(&self) -> PaletteColors {
-        match self {
-            Palette::Classic => PaletteColors {
-                bg_top: (10.0, 6.0, 22.0),
-                bg_bot: (22.0, 10.0, 32.0),
-                glow: (150.0, 35.0, 45.0),
-                cool: (115.0, 22.0, 30.0),
-                warm: (255.0, 95.0, 30.0),
-                hot: (255.0, 230.0, 95.0),
-            },
-            Palette::Toxic => PaletteColors {
-                bg_top: (8.0, 18.0, 8.0),
-                bg_bot: (12.0, 28.0, 14.0),
-                glow: (60.0, 120.0, 30.0),
-                cool: (40.0, 90.0, 25.0),
-                warm: (130.0, 220.0, 50.0),
-                hot: (220.0, 255.0, 120.0),
-            },
-            Palette::Bubblegum => PaletteColors {
-                bg_top: (15.0, 5.0, 25.0),
-                bg_bot: (28.0, 10.0, 35.0),
-                glow: (130.0, 40.0, 90.0),
-                cool: (110.0, 30.0, 80.0),
-                warm: (240.0, 90.0, 150.0),
-                hot: (255.0, 200.0, 180.0),
-            },
-            Palette::Mono => PaletteColors {
-                bg_top: (8.0, 8.0, 10.0),
-                bg_bot: (18.0, 18.0, 22.0),
-                glow: (60.0, 60.0, 70.0),
-                cool: (90.0, 90.0, 100.0),
-                warm: (180.0, 180.0, 190.0),
-                hot: (240.0, 240.0, 245.0),
-            },
-            // Dark teal/grey background, deep teal → bright cyan → soft violet.
-            Palette::Aurora => PaletteColors {
-                bg_top: (6.0, 14.0, 16.0),
-                bg_bot: (10.0, 20.0, 22.0),
-                glow: (25.0, 90.0, 80.0),
-                cool: (20.0, 80.0, 100.0),
-                warm: (70.0, 210.0, 160.0),
-                hot: (190.0, 140.0, 255.0),
-            },
-            // Near-black navy background, dark cobalt → electric blue → icy white.
-            Palette::Ocean => PaletteColors {
-                bg_top: (4.0, 7.0, 20.0),
-                bg_bot: (7.0, 12.0, 30.0),
-                glow: (18.0, 55.0, 150.0),
-                cool: (12.0, 40.0, 120.0),
-                warm: (55.0, 130.0, 255.0),
-                hot: (195.0, 225.0, 255.0),
-            },
-            // Dark maroon background, lava barely distinguishable at rest, bright red when hot.
-            Palette::Blood => PaletteColors {
-                bg_top: (14.0, 3.0, 3.0),
-                bg_bot: (20.0, 4.0, 4.0),
-                glow: (48.0, 8.0, 8.0),
-                cool: (75.0, 10.0, 10.0),
-                warm: (170.0, 22.0, 22.0),
-                hot: (230.0, 45.0, 45.0),
-            },
-            // Dark purple background, near-invisible lava at rest, bright violet → pale white when hot.
-            Palette::Ultraviolet => PaletteColors {
-                bg_top: (10.0, 4.0, 18.0),
-                bg_bot: (16.0, 6.0, 28.0),
-                glow: (55.0, 12.0, 100.0),
-                cool: (35.0, 5.0, 70.0),
-                warm: (150.0, 40.0, 255.0),
-                hot: (225.0, 195.0, 255.0),
-            },
-        }
     }
 }
 
@@ -259,5 +146,11 @@ mod tests {
         assert_eq!("ice".parse::<Palette>().unwrap(), Palette::Ocean);
         assert_eq!("GREEN".parse::<Palette>().unwrap(), Palette::Toxic);
         assert!("not-a-palette".parse::<Palette>().is_err());
+    }
+
+    #[test]
+    fn all_palettes_listed() {
+        // Sanity — palettes.toml has 8 entries; if you add/remove, update here.
+        assert_eq!(Palette::ALL.len(), 8);
     }
 }
