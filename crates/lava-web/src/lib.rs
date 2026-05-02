@@ -7,19 +7,30 @@
 
 use anyhow::{Context, Result};
 use axum::{
-    extract::Path,
+    extract::{ConnectInfo, Request},
     http::{header, HeaderValue, StatusCode},
-    response::IntoResponse,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::get,
     Router,
 };
+use std::hash::{DefaultHasher, Hasher};
 use std::net::SocketAddr;
+use std::time::Instant;
+use tower_http::compression::CompressionLayer;
 use tracing::info;
 
-const INDEX_HTML: &[u8] = include_bytes!("../static/index.html");
-const LAVA_JS: &[u8] = include_bytes!("../static/lava.js");
+// Raw asset sources — `_RAW` ones contain `__…_HASH__` placeholders that
+// `run` substitutes once at startup so the in-page references include
+// content-hashed query strings (`/static/lava.js?v=<hash>`).
+const INDEX_HTML_RAW: &str = include_str!("../static/index.html");
+const LAVA_JS_RAW: &str = include_str!("../static/lava.js");
 const WASM_JS: &[u8] = include_bytes!("../../lava-wasm/pkg/lava_wasm.js");
 const WASM_BG: &[u8] = include_bytes!("../../lava-wasm/pkg/lava_wasm_bg.wasm");
+
+// Hashed asset URLs are immutable: a new binary build → new hash → fresh
+// cache entry.
+const STATIC_CACHE: &str = "public, max-age=31536000, immutable";
 
 /// User-facing config. Constructed by the binary entrypoint (env, CLI flags,
 /// hardcoded for tests, etc.) and passed to [`run`].
@@ -29,46 +40,114 @@ pub struct Config {
 }
 
 pub async fn run(cfg: Config) -> Result<()> {
+    let Assets {
+        index_html,
+        lava_js,
+    } = build_assets();
+
     let app = Router::new()
-        .route("/", get(index))
-        .route("/{palette}", get(index_with_palette))
-        .route("/static/lava.js", get(|| async { js(LAVA_JS) }))
+        .route("/", get(move || async move { html(index_html) }))
+        .route("/{palette}", get(move || async move { html(index_html) }))
+        .route("/static/lava.js", get(move || async move { js(lava_js) }))
         .route("/static/lava_wasm.js", get(|| async { js(WASM_JS) }))
-        .route("/static/lava_wasm_bg.wasm", get(|| async { wasm(WASM_BG) }));
+        .route("/static/lava_wasm_bg.wasm", get(|| async { wasm(WASM_BG) }))
+        // Compress text/JS/wasm responses based on Accept-Encoding.
+        .layer(CompressionLayer::new())
+        // One info-level log line per request, after the response is built —
+        // outer layer so timing includes compression.
+        .layer(middleware::from_fn(log_request));
 
     let addr: SocketAddr = format!("0.0.0.0:{}", cfg.port).parse()?;
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("binding {addr}"))?;
     info!(%addr, "lava-web listening");
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 
-async fn index() -> impl IntoResponse {
-    html(INDEX_HTML)
+/// 16-hex-char hash of `bytes`. Not cryptographic — just enough to bust
+/// caches when the content changes.
+fn content_hash(bytes: &[u8]) -> String {
+    let mut h = DefaultHasher::new();
+    h.write(bytes);
+    format!("{:016x}", h.finish())
 }
 
-async fn index_with_palette(Path(_palette): Path<String>) -> impl IntoResponse {
-    // Palette is read by JS from window.location.pathname. The route exists
-    // so /uv etc. don't 404; the body is identical to /.
-    html(INDEX_HTML)
+/// Substituted-and-leaked asset bodies that the route closures hand out.
+/// `&'static [u8]` so the closures can hold them without further plumbing.
+struct Assets {
+    index_html: &'static [u8],
+    lava_js: &'static [u8],
+}
+
+fn build_assets() -> Assets {
+    let wasm_hash = content_hash(WASM_BG);
+    let wasm_js_hash = content_hash(WASM_JS);
+
+    let lava_js = LAVA_JS_RAW
+        .replace("__WASM_HASH__", &wasm_hash)
+        .replace("__WASM_JS_HASH__", &wasm_js_hash);
+    let lava_js: &'static [u8] = Box::leak(lava_js.into_bytes().into_boxed_slice());
+    let lava_js_hash = content_hash(lava_js);
+
+    let index_html = INDEX_HTML_RAW.replace("__LAVA_JS_HASH__", &lava_js_hash);
+    let index_html: &'static [u8] = Box::leak(index_html.into_bytes().into_boxed_slice());
+
+    Assets {
+        index_html,
+        lava_js,
+    }
+}
+
+async fn log_request(req: Request, next: Next) -> Response {
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+    let peer = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ConnectInfo(addr)| *addr);
+    let start = Instant::now();
+    let res = next.run(req).await;
+    info!(
+        peer = ?peer,
+        %method,
+        path,
+        status = res.status().as_u16(),
+        ms = start.elapsed().as_millis() as u64,
+        "request"
+    );
+    res
 }
 
 fn html(body: &'static [u8]) -> impl IntoResponse {
-    response(body, "text/html; charset=utf-8")
+    response(body, "text/html; charset=utf-8", "no-cache")
 }
 fn js(body: &'static [u8]) -> impl IntoResponse {
-    response(body, "application/javascript; charset=utf-8")
+    response(body, "application/javascript; charset=utf-8", STATIC_CACHE)
 }
 fn wasm(body: &'static [u8]) -> impl IntoResponse {
-    response(body, "application/wasm")
+    response(body, "application/wasm", STATIC_CACHE)
 }
 
-fn response(body: &'static [u8], content_type: &'static str) -> impl IntoResponse {
+fn response(
+    body: &'static [u8],
+    content_type: &'static str,
+    cache_control: &'static str,
+) -> impl IntoResponse {
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, HeaderValue::from_static(content_type))],
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_static(content_type)),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static(cache_control),
+            ),
+        ],
         body,
     )
 }

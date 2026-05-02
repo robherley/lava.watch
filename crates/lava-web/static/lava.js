@@ -6,7 +6,9 @@
 //   user keys/clicks → wasm.cycleNext/Prev/clickPixel
 //   palette switch  → fade in a badge in the bottom-left for ~3s
 
-import init, { LavaSession } from "/static/lava_wasm.js";
+// `?v=` query-string hashes are substituted by the server at startup so a
+// new binary build invalidates each asset's client cache (immutable + 1y).
+import init, { LavaSession } from "/static/lava_wasm.js?v=__WASM_JS_HASH__";
 
 // Internal pixel resolution. Higher = nicer metaballs, more wasm work per
 // frame. The visible canvas is CSS-stretched to viewport, so this is purely
@@ -15,7 +17,10 @@ const PIXEL_HEIGHT = 360;
 const BADGE_MS = 3000;
 
 (async () => {
-  await init();
+  // Pass the wasm URL explicitly so the version query survives — the
+  // wasm-pack-generated `init()` would otherwise resolve relative to its
+  // own (already-versioned) URL and lose the `?v=` on the .wasm file.
+  await init({ module_or_path: "/static/lava_wasm_bg.wasm?v=__WASM_HASH__" });
 
   const canvas = document.getElementById("lava");
   const badgeEl = document.getElementById("badge");
