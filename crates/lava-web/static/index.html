@@ -42,31 +42,42 @@
         user-select: none;
       }
       #badge.show { opacity: 1; }
-
-      #hint {
+      .tip {
         position: absolute;
-        left: 16px;
         top: 16px;
         font-size: 12px;
-        line-height: 1;
+        line-height: 1.4;
         color: rgba(255, 255, 255, 0.35);
-        transition: color 200ms ease-out;
-        user-select: none;
       }
-      #hint:hover { color: rgba(255, 255, 255, 0.85); }
-      #hint .cmd { letter-spacing: 0.02em; }
-      #hint .cmd::before {
+      .tip-left { left: 16px; }
+      .tip-right { right: 16px; }
+      .tip .cmd { letter-spacing: 0.02em; }
+      .tip .cmd::before {
         content: "$ ";
         opacity: 0.55;
       }
+      .repo {
+        text-decoration: none;
+        border-bottom: 1px solid currentColor;
+        padding-bottom: 0.5px;
+        transition: color 200ms ease-out;
+      }
+      .repo:hover { color: rgba(255, 255, 255, 0.85); }
     </style>
   </head>
   <body>
     <canvas id="lava"></canvas>
     <div id="badge"></div>
-    <div id="hint">
-      <span class="cmd">ssh lava.watch</span>
+    <div class="tip tip-left">
+      <div class="cmd">ssh lava.watch</div>
     </div>
+    <a
+      class="tip tip-right repo"
+      href="https://github.com/robherley/lava"
+      target="_blank"
+      rel="noopener noreferrer"
+      >source code</a
+    >
     <script type="module" src="/static/lava.js"></script>
   </body>
 </html>
