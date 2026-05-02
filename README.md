@@ -138,9 +138,9 @@ lava/
 ├── crates/
 │   ├── lava/           single-binary entrypoint (ssh + web)
 │   ├── lava-engine/    simulation, palettes, term + pixels renderers, Session
-│   ├── lava-ssh/       SSH server (lib + bin)
+│   ├── lava-ssh/       SSH server library (russh)
 │   ├── lava-wasm/      wasm-bindgen wrapper exposing the canvas API
-│   └── lava-web/       axum static-asset server (lib + bin)
+│   └── lava-web/       axum static-asset server library
 └── script/
     ├── setup           generate dev host key (idempotent)
     ├── build-wasm      wasm-pack build → static bundle

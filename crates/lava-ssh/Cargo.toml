@@ -9,14 +9,9 @@ description = "SSH server that streams a lava lamp to every connection."
 name = "lava_ssh"
 path = "src/lib.rs"
 
-[[bin]]
-name = "lava-ssh"
-path = "src/main.rs"
-
 [dependencies]
 lava-engine = { path = "../lava-engine" }
 russh = "0.60"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "net", "io-util", "signal"] }
 anyhow = "1"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

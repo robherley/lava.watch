@@ -3,19 +3,14 @@ name = "lava-web"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "HTTP server for the lava lamp web interface — embeds a WASM-driven xterm.js."
+description = "HTTP server for the canvas-rendered lava lamp web page."
 
 [lib]
 name = "lava_web"
 path = "src/lib.rs"
 
-[[bin]]
-name = "lava-web"
-path = "src/main.rs"
-
 [dependencies]
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 anyhow = "1"
