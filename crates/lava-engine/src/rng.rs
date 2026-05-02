@@ -9,7 +9,9 @@ impl Rng {
     pub fn new(seed: u64) -> Self {
         let lo = seed as u32;
         let hi = (seed >> 32) as u32;
-        let mut r = Rng { s: [lo | 1, hi | 1, 0xdead_beef, 0xcafe_f00d] };
+        let mut r = Rng {
+            s: [lo | 1, hi | 1, 0xdead_beef, 0xcafe_f00d],
+        };
         for _ in 0..16 {
             r.next_u32();
         }

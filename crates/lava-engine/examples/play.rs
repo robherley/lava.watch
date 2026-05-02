@@ -84,7 +84,11 @@ fn main() -> std::io::Result<()> {
         term::render(&lava, &mut buf);
 
         // Palette name in the reserved bottom row, dimmed so it doesn't fight the lamp.
-        let _ = write!(buf, "\r\n\x1b[2K\x1b[90m  ← {} →\x1b[0m", lava.palette.name());
+        let _ = write!(
+            buf,
+            "\r\n\x1b[2K\x1b[90m  ← {} →\x1b[0m",
+            lava.palette.name()
+        );
 
         if stdout.write_all(&buf).is_err() {
             break;

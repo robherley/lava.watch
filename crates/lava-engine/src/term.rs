@@ -94,7 +94,11 @@ fn pixel_color(pal: &PaletteColors, field: f32, heat: f32, v: f32) -> (u8, u8, u
 /// Returns `a` at `t=0`, `b` at `t=1`. `t` is not clamped — pass values in
 /// `[0, 1]` for a true blend; values outside that range extrapolate.
 fn lerp3(a: (f32, f32, f32), b: (f32, f32, f32), t: f32) -> (f32, f32, f32) {
-    (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t)
+    (
+        a.0 + (b.0 - a.0) * t,
+        a.1 + (b.1 - a.1) * t,
+        a.2 + (b.2 - a.2) * t,
+    )
 }
 
 /// Convert a float RGB triple to `u8` channels by truncating toward zero.
@@ -112,7 +116,15 @@ mod tests {
 
     #[test]
     fn renders_a_frame_with_truecolor_and_half_blocks() {
-        let mut lava = Lava::with_config(40, 20, Config { blob_count: 6, seed: 1234, ..Default::default() });
+        let mut lava = Lava::with_config(
+            40,
+            20,
+            Config {
+                blob_count: 6,
+                seed: 1234,
+                ..Default::default()
+            },
+        );
         for _ in 0..30 {
             lava.step(1.0 / 30.0);
         }
@@ -129,8 +141,19 @@ mod tests {
     #[test]
     fn each_palette_produces_distinct_output() {
         let make = |p: Palette| {
-            let mut lava = Lava::with_config(20, 10, Config { palette: p, blob_count: 3, seed: 7, ..Default::default() });
-            for _ in 0..10 { lava.step(1.0/30.0); }
+            let mut lava = Lava::with_config(
+                20,
+                10,
+                Config {
+                    palette: p,
+                    blob_count: 3,
+                    seed: 7,
+                    ..Default::default()
+                },
+            );
+            for _ in 0..10 {
+                lava.step(1.0 / 30.0);
+            }
             let mut buf = Vec::new();
             render(&lava, &mut buf);
             buf

@@ -34,6 +34,7 @@ pub struct Config {
 }
 
 impl Default for Config {
+    #[allow(clippy::unusual_byte_groupings)] // seed spells "coffee food"
     fn default() -> Self {
         Self {
             palette: Palette::Classic,
@@ -135,10 +136,22 @@ impl Lava {
 
             // Soft walls — keep blob centers a fraction of the radius inside the bounds.
             let m = b.radius * 0.5;
-            if b.x < m { b.x = m; b.vx = b.vx.abs() * RESTITUTION; }
-            if b.x > w - m { b.x = w - m; b.vx = -b.vx.abs() * RESTITUTION; }
-            if b.y < m { b.y = m; b.vy = b.vy.abs() * RESTITUTION; }
-            if b.y > h - m { b.y = h - m; b.vy = -b.vy.abs() * RESTITUTION; }
+            if b.x < m {
+                b.x = m;
+                b.vx = b.vx.abs() * RESTITUTION;
+            }
+            if b.x > w - m {
+                b.x = w - m;
+                b.vx = -b.vx.abs() * RESTITUTION;
+            }
+            if b.y < m {
+                b.y = m;
+                b.vy = b.vy.abs() * RESTITUTION;
+            }
+            if b.y > h - m {
+                b.y = h - m;
+                b.vy = -b.vy.abs() * RESTITUTION;
+            }
         }
     }
 
@@ -157,7 +170,11 @@ impl Lava {
             heat_acc += w * b.temp;
             weight_sum += w;
         }
-        let heat = if weight_sum > 0.0 { heat_acc / weight_sum } else { 0.0 };
+        let heat = if weight_sum > 0.0 {
+            heat_acc / weight_sum
+        } else {
+            0.0
+        };
         (field, heat)
     }
 }
@@ -168,7 +185,14 @@ mod tests {
 
     #[test]
     fn resize_preserves_blob_count() {
-        let mut lava = Lava::with_config(40, 20, Config { blob_count: 5, ..Default::default() });
+        let mut lava = Lava::with_config(
+            40,
+            20,
+            Config {
+                blob_count: 5,
+                ..Default::default()
+            },
+        );
         let n = lava.blobs.len();
         lava.resize(80, 40);
         assert_eq!(lava.blobs.len(), n);
@@ -178,7 +202,11 @@ mod tests {
 
     #[test]
     fn deterministic_for_same_seed() {
-        let cfg = Config { blob_count: 5, seed: 99, ..Default::default() };
+        let cfg = Config {
+            blob_count: 5,
+            seed: 99,
+            ..Default::default()
+        };
         let a = Lava::with_config(40, 20, cfg.clone());
         let b = Lava::with_config(40, 20, cfg);
         for (ba, bb) in a.blobs.iter().zip(b.blobs.iter()) {
@@ -189,11 +217,24 @@ mod tests {
 
     #[test]
     fn speed_scales_simulation() {
-        let cfg_slow = Config { speed: 0.0, blob_count: 3, seed: 1, ..Default::default() };
-        let cfg_fast = Config { speed: 2.0, blob_count: 3, seed: 1, ..Default::default() };
+        let cfg_slow = Config {
+            speed: 0.0,
+            blob_count: 3,
+            seed: 1,
+            ..Default::default()
+        };
+        let cfg_fast = Config {
+            speed: 2.0,
+            blob_count: 3,
+            seed: 1,
+            ..Default::default()
+        };
         let mut a = Lava::with_config(40, 20, cfg_slow);
         let mut b = Lava::with_config(40, 20, cfg_fast);
-        for _ in 0..30 { a.step(1.0/30.0); b.step(1.0/30.0); }
+        for _ in 0..30 {
+            a.step(1.0 / 30.0);
+            b.step(1.0 / 30.0);
+        }
         assert_eq!(a.time, 0.0);
         assert!(b.time > 0.0);
     }
