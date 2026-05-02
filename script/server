@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# script/server: start the lava SSH server for local development.
+# script/server: build the wasm bundle, prep a dev SSH host key, run the
+# all-in-one `lava` binary (SSH + web).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 script/setup
+script/build-wasm
 
 export LAVA_HOST_KEY="${LAVA_HOST_KEY:-.dev/host_key}"
 export LAVA_PORT="${LAVA_PORT:-5282}"
+export LAVA_WEB_PORT="${LAVA_WEB_PORT:-8080}"
 
-exec cargo run --release -p lava-ssh
+exec cargo run --release -p lava

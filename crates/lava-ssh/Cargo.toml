@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "SSH server that streams a lava lamp to every connection."
 
+[lib]
+name = "lava_ssh"
+path = "src/lib.rs"
+
 [[bin]]
 name = "lava-ssh"
 path = "src/main.rs"

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# script/build-wasm: build the lava-engine wasm bundle and fetch any other
+# binary web assets the static page needs (libghostty). Idempotent.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if ! command -v wasm-pack >/dev/null 2>&1; then
+  echo "wasm-pack not found — install with:" >&2
+  echo "  cargo install wasm-pack --locked" >&2
+  exit 1
+fi
+
+if ! rustup target list --installed | grep -q '^wasm32-unknown-unknown$'; then
+  echo "adding wasm32-unknown-unknown target"
+  rustup target add wasm32-unknown-unknown
+fi
+
+wasm-pack build crates/lava-wasm \
+  --target web \
+  --out-dir pkg \
+  --no-typescript \
+  --release

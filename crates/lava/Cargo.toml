@@ -1,0 +1,18 @@
+[package]
+name = "lava"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "All-in-one lava server — SSH + web from a single static binary."
+
+[[bin]]
+name = "lava"
+path = "src/main.rs"
+
+[dependencies]
+lava-ssh = { path = "../lava-ssh" }
+lava-web = { path = "../lava-web" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

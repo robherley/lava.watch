@@ -187,6 +187,50 @@ pub(crate) struct PaletteColors {
     pub hot: (f32, f32, f32),
 }
 
+/// Map (palette colors, field intensity, local heat, vertical position
+/// `v ∈ [0, 1]`) → RGB. Shared by every renderer (ANSI, RGBA pixels, …).
+pub(crate) fn pixel_color(pal: &PaletteColors, field: f32, heat: f32, v: f32) -> (u8, u8, u8) {
+    let bg = lerp3(pal.bg_top, pal.bg_bot, v.clamp(0.0, 1.0));
+
+    if field < 0.55 {
+        return rgb(bg);
+    }
+
+    if field < 1.0 {
+        let g = (field - 0.55) / 0.45;
+        let glow = lerp3(bg, pal.glow, g * 0.55);
+        return rgb(glow);
+    }
+
+    let h = heat.clamp(0.0, 1.0);
+    let body = if h < 0.5 {
+        lerp3(pal.cool, pal.warm, h * 2.0)
+    } else {
+        lerp3(pal.warm, pal.hot, (h - 0.5) * 2.0)
+    };
+    let boost = ((field - 1.0) * 0.25).clamp(0.0, 0.4);
+    rgb((
+        (body.0 * (1.0 + boost)).min(255.0),
+        (body.1 * (1.0 + boost)).min(255.0),
+        (body.2 * (1.0 + boost)).min(255.0),
+    ))
+}
+
+/// Component-wise linear interpolation between two RGB triples.
+fn lerp3(a: (f32, f32, f32), b: (f32, f32, f32), t: f32) -> (f32, f32, f32) {
+    (
+        a.0 + (b.0 - a.0) * t,
+        a.1 + (b.1 - a.1) * t,
+        a.2 + (b.2 - a.2) * t,
+    )
+}
+
+/// Truncate a float RGB triple to `u8` channels. Saturating at the integer
+/// bounds (Rust's `f32 as u8` semantics).
+fn rgb(c: (f32, f32, f32)) -> (u8, u8, u8) {
+    (c.0 as u8, c.1 as u8, c.2 as u8)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

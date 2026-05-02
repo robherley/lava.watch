@@ -1,0 +1,13 @@
+[package]
+name = "lava-wasm"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "WebAssembly bindings for the lava engine — Session in the browser."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+lava-engine = { path = "../lava-engine" }
+wasm-bindgen = "0.2"
