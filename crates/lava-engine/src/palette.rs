@@ -28,6 +28,21 @@ impl Palette {
         let (r, g, b) = self.colors().cool;
         (r as u8, g as u8, b as u8)
     }
+
+    /// Lower stop of the background gradient — same color the lamp fades to
+    /// at the bottom. Pairs with [`Palette::glow`] for chrome that blends
+    /// with the lamp instead of fighting it.
+    pub fn bg(&self) -> (u8, u8, u8) {
+        let (r, g, b) = self.colors().bg_bot;
+        (r as u8, g as u8, b as u8)
+    }
+
+    /// Soft halo color sitting between the bg and the body — useful as a
+    /// muted-but-legible foreground over [`Palette::bg`].
+    pub fn glow(&self) -> (u8, u8, u8) {
+        let (r, g, b) = self.colors().glow;
+        (r as u8, g as u8, b as u8)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

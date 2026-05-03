@@ -55,11 +55,11 @@ http://localhost:8080/uv
 ```
 
 Anything that doesn't parse falls back to `classic`. Once connected,
-**← / →** cycles palettes (the new name flashes briefly in the
-bottom-left badge), **i** inverts colors, **a** swaps in the ASCII
-renderer (` .:-=+*#%@` density ramp instead of half-blocks), and
-**left-click** anywhere on the lamp to heat that spot — nearby blobs
-warm up and rise.
+**← / →** cycles palettes (the new name flashes briefly in a centered
+badge), **i** inverts colors, **a** swaps in the ASCII renderer
+(` .:-=+*#%@` density ramp instead of half-blocks), **h** hides the
+bottom keybind strip, and **left-click** anywhere on the lamp to heat
+that spot — nearby blobs warm up and rise.
 
 For the full palette list + aliases, two equivalent ways:
 

@@ -72,6 +72,9 @@ const BADGE_MS = 3000;
 
   const palette = window.location.pathname.replace(/^\/+|\/+$/g, "") || null;
   let session = new LavaSession(dims.w, dims.rows, palette);
+  // The web has its own UI chrome (DOM tips); suppress the engine's bottom
+  // keybind strip so it doesn't appear in ASCII mode.
+  session.toggleMenu();
 
   // RGBA-only: reusable ImageData onto the wasm-returned buffer.
   let imageData = ctx.createImageData(dims.w, dims.h);
@@ -100,6 +103,9 @@ const BADGE_MS = 3000;
 
   let badgeTimer = null;
   function flashBadge() {
+    // ASCII mode draws the badge on canvas via the engine — skip the DOM
+    // copy so we don't double up.
+    if (dims.mode === "ascii") return;
     const name = session.currentPaletteName();
     const [ar, ag, ab] = session.currentPaletteAccent();
     const [br, bg, bb] = session.currentPaletteAccentBg();
@@ -111,7 +117,9 @@ const BADGE_MS = 3000;
     badgeTimer = setTimeout(() => badgeEl.classList.remove("show"), BADGE_MS);
   }
 
-  // Keys: ←/→ cycle palettes, i invert, a toggle ASCII.
+  // Keys: ←/→ cycle palettes, i invert, a toggle ASCII. (No 'h' on the web
+  // — the bottom strip is permanently suppressed; the DOM tips serve as
+  // chrome instead.)
   document.addEventListener("keydown", (e) => {
     if (e.key === "ArrowRight") {
       session.cycleNext();
@@ -153,52 +161,63 @@ const BADGE_MS = 3000;
     }, 100);
   });
 
+  // Decode bytes once as UTF-8 so the parser works in chars (← / → · in the
+  // bottom keybind strip are multibyte).
+  const decoder = new TextDecoder();
+
   // ASCII path: walk the engine's truecolor SGR output and paint each char
   // onto the canvas. Cells with the same fg/bg coalesce into runs, mirroring
-  // the renderer's own batching.
+  // the renderer's own batching. Recognises SGR (`m`) and cursor positioning
+  // (`H`) — the engine uses the latter for the centered badge and bottom
+  // strip overlays.
   function drawAscii(bytes) {
-    const w = canvas.width,
-      h = canvas.height;
+    const text = decoder.decode(bytes);
     ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.font = ASCII_FONT;
     ctx.textBaseline = "top";
 
-    let curFg = "#fff",
-      curBg = null;
-    let col = 0,
-      row = 0;
+    let curFg = "#fff";
+    let curBg = null;
+    let col = 0;
+    let row = 0;
     let i = 0;
-    const len = bytes.length;
+    const len = text.length;
     while (i < len) {
-      const b = bytes[i];
-      if (b === 0x1b && bytes[i + 1] === 0x5b) {
-        // ESC [ — find the final byte ('m' = SGR, 'H' = cursor home).
+      const ch = text[i];
+      if (ch === "\x1b" && text[i + 1] === "[") {
         let j = i + 2;
-        while (j < len && bytes[j] !== 0x6d && bytes[j] !== 0x48) j++;
-        const final = bytes[j];
-        if (final === 0x48) {
-          // Cursor home — irrelevant; we redraw the whole canvas each frame.
-          i = j + 1;
-          continue;
-        }
-        const params = String.fromCharCode.apply(null, bytes.subarray(i + 2, j));
-        const parts = params.split(";");
-        const head = +parts[0];
-        if (head === 0) {
-          curFg = "#fff";
-          curBg = null;
-        } else if (head === 38 && +parts[1] === 2) {
-          curFg = `rgb(${+parts[2]},${+parts[3]},${+parts[4]})`;
-        } else if (head === 48 && +parts[1] === 2) {
-          curBg = `rgb(${+parts[2]},${+parts[3]},${+parts[4]})`;
+        while (j < len && text[j] !== "m" && text[j] !== "H") j++;
+        const final = text[j];
+        const params = text.slice(i + 2, j);
+        if (final === "H") {
+          // \x1b[<row>;<col>H — both 1-indexed, default to 1.
+          if (params.length === 0) {
+            row = 0;
+            col = 0;
+          } else {
+            const [r, c] = params.split(";").map(Number);
+            row = (r || 1) - 1;
+            col = (c || 1) - 1;
+          }
+        } else {
+          const parts = params.split(";");
+          const head = +parts[0];
+          if (head === 0) {
+            curFg = "#fff";
+            curBg = null;
+          } else if (head === 38 && +parts[1] === 2) {
+            curFg = `rgb(${+parts[2]},${+parts[3]},${+parts[4]})`;
+          } else if (head === 48 && +parts[1] === 2) {
+            curBg = `rgb(${+parts[2]},${+parts[3]},${+parts[4]})`;
+          }
         }
         i = j + 1;
-      } else if (b === 0x0a) {
+      } else if (ch === "\n") {
         col = 0;
         row++;
         i++;
-      } else if (b === 0x0d) {
+      } else if (ch === "\r") {
         i++;
       } else {
         const x = col * ASCII_CHAR_W;
@@ -208,7 +227,7 @@ const BADGE_MS = 3000;
           ctx.fillRect(x, y, ASCII_CHAR_W, ASCII_CHAR_H);
         }
         ctx.fillStyle = curFg;
-        ctx.fillText(String.fromCharCode(b), x, y);
+        ctx.fillText(ch, x, y);
         col++;
         i++;
       }

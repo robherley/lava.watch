@@ -18,6 +18,16 @@ pub enum RenderMode {
     Ascii,
 }
 
+/// Bit-flip every channel — matches the engine's photographic-negative
+/// transform so chrome inverts in lockstep with the lamp.
+fn invert_if(c: (u8, u8, u8), inverted: bool) -> (u8, u8, u8) {
+    if inverted {
+        (255 - c.0, 255 - c.1, 255 - c.2)
+    } else {
+        c
+    }
+}
+
 /// How many frames the bottom-left palette badge stays visible after a switch.
 const OVERLAY_FRAMES: u32 = 90;
 
@@ -33,6 +43,8 @@ pub enum Input {
     ToggleInverted,
     /// Toggle between half-block and ASCII renderers.
     ToggleAscii,
+    /// Show / hide the bottom keybind strip.
+    ToggleMenu,
     Exit,
     /// Left-button click at a 1-indexed terminal cell.
     Click {
@@ -53,6 +65,8 @@ pub fn parse_input(data: &[u8]) -> Option<Input> {
         b"i" | b"I" => return Some(Input::ToggleInverted),
         // 'a' / 'A' toggle ASCII renderer.
         b"a" | b"A" => return Some(Input::ToggleAscii),
+        // 'h' / 'H' show/hide the bottom keybind strip.
+        b"h" | b"H" => return Some(Input::ToggleMenu),
         // 'q' / 'Q' quit (alongside Ctrl-C / Ctrl-D below).
         b"q" | b"Q" => return Some(Input::Exit),
         _ => {}
@@ -86,6 +100,7 @@ pub struct Session {
     palette_idx: usize,
     overlay_frames: u32,
     mode: RenderMode,
+    show_menu: bool,
 }
 
 impl Session {
@@ -104,6 +119,7 @@ impl Session {
             palette_idx,
             overlay_frames: 0,
             mode: RenderMode::HalfBlock,
+            show_menu: true,
         }
     }
 
@@ -138,25 +154,68 @@ impl Session {
         }
     }
 
-    /// Append the next ANSI frame to `out` — lava body plus overlay if active.
-    /// Caller handles initial alt-screen entry / mouse-mode setup. The
-    /// renderer is picked from [`Session::render_mode`].
+    /// Append the next ANSI frame to `out` — lava body, the persistent
+    /// bottom keybind strip (unless hidden), and the transient palette
+    /// badge in the screen's center if a cycle just happened. Caller
+    /// handles initial alt-screen entry / mouse-mode setup. The renderer is
+    /// picked from [`Session::render_mode`].
     pub fn render(&self, out: &mut Vec<u8>) {
         match self.mode {
             RenderMode::HalfBlock => term::render(&self.lava, out),
             RenderMode::Ascii => ascii::render(&self.lava, out),
         }
-        if self.overlay_frames > 0 {
-            let p = self.current_palette();
-            let label = format!(" {} ", p.name());
-            let (fr, fg, fb) = p.accent();
-            let (br, bg, bb) = p.accent_bg();
-            let rows = self.lava.height / 2;
-            let overlay = format!(
-                "\x1b[{rows};1H\x1b[1;38;2;{fr};{fg};{fb};48;2;{br};{bg};{bb}m{label}\x1b[0m"
-            );
-            out.extend_from_slice(overlay.as_bytes());
+        if self.show_menu {
+            self.render_keybind_strip(out);
         }
+        if self.overlay_frames > 0 {
+            self.render_palette_badge(out);
+        }
+    }
+
+    /// Bottom-row keybind strip — left-aligned with a small indent, full
+    /// row width, muted glow fg on bg-gradient bg so it blends with the
+    /// bottom of the lamp instead of competing with it. Skipped silently
+    /// if the terminal is too narrow to fit the text.
+    fn render_keybind_strip(&self, out: &mut Vec<u8>) {
+        use std::io::Write;
+        const TEXT: &str = "← / →  palette  ·  i  invert  ·  a  ascii  ·  h  hide  ·  q  quit";
+        const LEAD: u16 = 2;
+        let cols = self.lava.width;
+        let rows = self.lava.height / 2;
+        let visual_len = TEXT.chars().count() as u16;
+        if visual_len + LEAD > cols {
+            return;
+        }
+        let pad_right = cols - visual_len - LEAD;
+        let p = self.current_palette();
+        let inv = self.lava.inverted;
+        let (fr, fg, fb) = invert_if(p.glow(), inv);
+        let (br, bg, bb) = invert_if(p.bg(), inv);
+        let _ = write!(
+            out,
+            "\x1b[{rows};1H\x1b[38;2;{fr};{fg};{fb};48;2;{br};{bg};{bb}m{}{TEXT}{}\x1b[0m",
+            " ".repeat(LEAD as usize),
+            " ".repeat(pad_right as usize),
+        );
+    }
+
+    /// Palette name flash, centered on screen — fires for [`OVERLAY_FRAMES`]
+    /// after a palette cycle.
+    fn render_palette_badge(&self, out: &mut Vec<u8>) {
+        use std::io::Write;
+        let p = self.current_palette();
+        let label = format!(" {} ", p.name());
+        let label_width = label.chars().count() as u16;
+        let cols = self.lava.width;
+        let rows = self.lava.height / 2;
+        let row_pos = (rows / 2).max(1);
+        let col_pos = (cols.saturating_sub(label_width) / 2 + 1).max(1);
+        let (fr, fg, fb) = p.accent();
+        let (br, bg, bb) = p.accent_bg();
+        let _ = write!(
+            out,
+            "\x1b[{row_pos};{col_pos}H\x1b[1;38;2;{fr};{fg};{fb};48;2;{br};{bg};{bb}m{label}\x1b[0m"
+        );
     }
 
     /// Append the next frame as RGBA pixel bytes to `out` — for canvas-style
@@ -216,6 +275,15 @@ impl Session {
         };
     }
 
+    /// Show / hide the bottom keybind strip.
+    pub fn toggle_menu(&mut self) {
+        self.show_menu = !self.show_menu;
+    }
+
+    pub fn is_menu_visible(&self) -> bool {
+        self.show_menu
+    }
+
     /// Heat blobs near a 1-indexed terminal cell. Accounts for the half-block
     /// double-pixel-row mapping on the y-axis.
     pub fn click(&mut self, col: u16, row: u16) {
@@ -238,6 +306,7 @@ impl Session {
             Input::PalettePrev => self.cycle_prev(),
             Input::ToggleInverted => self.toggle_inverted(),
             Input::ToggleAscii => self.toggle_ascii(),
+            Input::ToggleMenu => self.toggle_menu(),
             Input::Click { col, row } => self.click(col, row),
             Input::Exit => return true,
         }
@@ -297,20 +366,55 @@ mod tests {
     }
 
     #[test]
-    fn cycle_advances_palette_and_arms_overlay() {
+    fn cycle_advances_palette_and_renders_centered_badge() {
         let mut s = Session::new(40, 20, Palette::Classic);
         let initial = s.current_palette();
         s.cycle_next();
         assert_ne!(s.current_palette(), initial);
-        // First post-cycle render should include the absolute-position escape
-        // for the bottom-left overlay.
         let mut buf = Vec::new();
         s.render(&mut buf);
         let bytes = std::str::from_utf8(&buf).unwrap();
+        // Badge is centered vertically — for 20 rows, that's row 10.
         assert!(
-            bytes.contains("\x1b[20;1H"),
-            "expected overlay positioning escape"
+            bytes.contains("\x1b[10;"),
+            "expected centered badge positioning"
         );
+        // And the new palette name should appear (inside the badge label).
+        let new_name = s.current_palette().name();
+        assert!(
+            bytes.contains(new_name),
+            "expected palette name {new_name:?} in output"
+        );
+    }
+
+    #[test]
+    fn render_includes_keybind_strip_by_default() {
+        let s = Session::new(80, 24, Palette::Classic);
+        let mut buf = Vec::new();
+        s.render(&mut buf);
+        let bytes = std::str::from_utf8(&buf).unwrap();
+        assert!(bytes.contains("palette"));
+        assert!(bytes.contains("hide"));
+    }
+
+    #[test]
+    fn toggle_menu_hides_keybind_strip() {
+        let mut s = Session::new(80, 24, Palette::Classic);
+        s.toggle_menu();
+        let mut buf = Vec::new();
+        s.render(&mut buf);
+        let bytes = std::str::from_utf8(&buf).unwrap();
+        assert!(!bytes.contains("hide"));
+    }
+
+    #[test]
+    fn h_key_toggles_menu_via_feed_input() {
+        let mut s = Session::new(80, 24, Palette::Classic);
+        assert!(s.is_menu_visible());
+        assert!(!s.feed_input(b"h"));
+        assert!(!s.is_menu_visible());
+        assert!(!s.feed_input(b"H"));
+        assert!(s.is_menu_visible());
     }
 
     #[test]

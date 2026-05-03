@@ -46,6 +46,7 @@ pub fn help_text(tagline: &str, example: &str) -> Vec<u8> {
     write!(s, "    ← / →   cycle palettes\r\n").unwrap();
     write!(s, "    i       invert colors\r\n").unwrap();
     write!(s, "    a       toggle ascii mode\r\n").unwrap();
+    write!(s, "    h       hide bottom menu\r\n").unwrap();
     write!(s, "    q       quit\r\n").unwrap();
     write!(s, "\r\n  example: {example}\r\n").unwrap();
     write!(s, "\r\n  web:     https://lava.watch\r\n").unwrap();

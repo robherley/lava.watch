@@ -119,6 +119,16 @@ impl LavaSession {
         matches!(self.inner.render_mode(), lava_engine::RenderMode::Ascii)
     }
 
+    #[wasm_bindgen(js_name = toggleMenu)]
+    pub fn toggle_menu(&mut self) {
+        self.inner.toggle_menu();
+    }
+
+    #[wasm_bindgen(js_name = isMenuVisible)]
+    pub fn is_menu_visible(&self) -> bool {
+        self.inner.is_menu_visible()
+    }
+
     /// Heat blobs near `(x, y)` in engine pixel coordinates. For canvas
     /// hosts: convert from canvas pixel coords with the same `(w, h)`
     /// returned by `pixelDimensions()`.
