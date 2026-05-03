@@ -5,15 +5,26 @@
 //   wasm.tick(dt) → wasm.renderRgba() → ctx.putImageData → frame on screen
 //   user keys/clicks → wasm.cycleNext/Prev/clickPixel
 //   palette switch  → fade in a badge in the bottom-left for ~3s
+//
+// `a` swaps in the ASCII renderer: same engine, same canvas, but each
+// frame becomes wasm.render() (ANSI bytes) drawn as text via `fillText`
+// after a tiny SGR parser walks the truecolor escapes.
 
 // `?v=` query-string hashes are substituted by the server at startup so a
 // new binary build invalidates each asset's client cache (immutable + 1y).
 import init, { LavaSession } from "/static/lava_wasm.js?v=__WASM_JS_HASH__";
 
-// Internal pixel resolution. Higher = nicer metaballs, more wasm work per
-// frame. The visible canvas is CSS-stretched to viewport, so this is purely
+// RGBA path: internal pixel resolution. Higher = nicer metaballs, more wasm
+// work per frame. The canvas is CSS-stretched to viewport so this is purely
 // a quality/performance knob.
 const PIXEL_HEIGHT = 360;
+
+// ASCII path: cell size in canvas-internal pixels. The canvas internal
+// dimensions are sized to a whole number of cells so chars stay crisp.
+const ASCII_CHAR_W = 9;
+const ASCII_CHAR_H = 18;
+const ASCII_FONT = `${ASCII_CHAR_H}px ui-monospace, "SF Mono", Menlo, Consolas, monospace`;
+
 const BADGE_MS = 3000;
 
 (async () => {
@@ -25,30 +36,67 @@ const BADGE_MS = 3000;
   const canvas = document.getElementById("lava");
   const badgeEl = document.getElementById("badge");
   const ctx = canvas.getContext("2d");
-  // We're stretching to viewport with CSS — disable canvas smoothing so the
-  // metaball gradients stay crisp at any scale.
   ctx.imageSmoothingEnabled = true;
 
-  // Aspect-aware engine sizing. The engine treats `rows` as pixel-pairs
-  // (half-block legacy), so the actual pixel grid is cols × 2*rows.
-  function dimsFromViewport() {
+  // RGBA-mode dims: aspect-driven pixel grid; engine `rows` = pixel-height/2.
+  function rgbaDims() {
     const ratio = window.innerWidth / window.innerHeight;
     const h = PIXEL_HEIGHT;
     const w = Math.max(20, Math.round(h * ratio));
-    // engine "rows" = h/2 because it doubles internally.
-    return { w, h, rows: Math.max(1, Math.floor(h / 2)) };
+    return { mode: "rgba", w, h, rows: Math.max(1, Math.floor(h / 2)) };
   }
 
-  let { w, h, rows } = dimsFromViewport();
-  canvas.width = w;
-  canvas.height = h;
+  // ASCII-mode dims: pack as many `ASCII_CHAR_W × ASCII_CHAR_H` cells as fit
+  // in the viewport. The canvas is sized to an exact multiple of cells.
+  function asciiDims() {
+    const cols = Math.max(20, Math.floor(window.innerWidth / ASCII_CHAR_W));
+    const rows = Math.max(10, Math.floor(window.innerHeight / ASCII_CHAR_H));
+    return {
+      mode: "ascii",
+      cols,
+      rows,
+      w: cols * ASCII_CHAR_W,
+      // Engine `rows` is half the internal pixel height, so request `rows`
+      // cells; the renderer emits `rows` lines.
+      h: rows * ASCII_CHAR_H,
+    };
+  }
+
+  function dimsForMode(mode) {
+    return mode === "ascii" ? asciiDims() : rgbaDims();
+  }
+
+  let dims = rgbaDims();
+  canvas.width = dims.w;
+  canvas.height = dims.h;
 
   const palette = window.location.pathname.replace(/^\/+|\/+$/g, "") || null;
-  let session = new LavaSession(w, rows, palette);
+  let session = new LavaSession(dims.w, dims.rows, palette);
 
-  // Reusable clamped view onto the wasm-returned buffer; ImageData wants
-  // Uint8ClampedArray.
-  let imageData = ctx.createImageData(w, h);
+  // RGBA-only: reusable ImageData onto the wasm-returned buffer.
+  let imageData = ctx.createImageData(dims.w, dims.h);
+
+  function applyDims(next) {
+    dims = next;
+    canvas.width = next.w;
+    canvas.height = next.h;
+    if (next.mode === "rgba") {
+      imageData = ctx.createImageData(next.w, next.h);
+      session.resize(next.w, next.rows);
+    } else {
+      session.resize(next.cols, next.rows);
+    }
+  }
+
+  // Sync the engine's render mode → the JS render path. Called after any
+  // input that might have flipped the mode (the 'a' keybind here, but the
+  // engine could in theory flip it via feedInput too).
+  function syncMode() {
+    const wantAscii = session.isAsciiMode();
+    if ((dims.mode === "ascii") !== wantAscii) {
+      applyDims(dimsForMode(wantAscii ? "ascii" : "rgba"));
+    }
+  }
 
   let badgeTimer = null;
   function flashBadge() {
@@ -63,7 +111,7 @@ const BADGE_MS = 3000;
     badgeTimer = setTimeout(() => badgeEl.classList.remove("show"), BADGE_MS);
   }
 
-  // Keyboard: ←/→ cycle palettes, i flips invert.
+  // Keys: ←/→ cycle palettes, i invert, a toggle ASCII.
   document.addEventListener("keydown", (e) => {
     if (e.key === "ArrowRight") {
       session.cycleNext();
@@ -73,34 +121,99 @@ const BADGE_MS = 3000;
       flashBadge();
     } else if (e.key === "i" || e.key === "I") {
       session.toggleInverted();
+    } else if (e.key === "a" || e.key === "A") {
+      session.toggleAscii();
+      syncMode();
     }
   });
 
-  // Mouse: click anywhere on the canvas → heat that pixel.
+  // Mouse: click anywhere on the canvas → heat that pixel. Coordinates are
+  // converted to engine pixel space, which differs by mode (RGBA: w×h pixel
+  // grid; ASCII: cols×rows*2 since the engine still doubles vertically).
   canvas.addEventListener("mousedown", (e) => {
     if (e.button !== 0) return;
     const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * w;
-    const y = ((e.clientY - rect.top) / rect.height) * h;
-    session.clickPixel(x, y);
+    const fx = (e.clientX - rect.left) / rect.width;
+    const fy = (e.clientY - rect.top) / rect.height;
+    if (dims.mode === "rgba") {
+      session.clickPixel(fx * dims.w, fy * dims.h);
+    } else {
+      session.clickPixel(fx * dims.cols, fy * dims.rows * 2);
+    }
   });
 
-  // Resize: debounce, recompute dims, recreate ImageData + resize session.
+  // Resize: debounce, recompute dims for the current mode, resize engine.
   let resizeTimer = null;
   window.addEventListener("resize", () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      const next = dimsFromViewport();
-      if (next.w === w && next.h === h) return;
-      w = next.w;
-      h = next.h;
-      rows = next.rows;
-      canvas.width = w;
-      canvas.height = h;
-      imageData = ctx.createImageData(w, h);
-      session.resize(w, rows);
+      const next = dimsForMode(dims.mode);
+      if (next.w === dims.w && next.h === dims.h) return;
+      applyDims(next);
     }, 100);
   });
+
+  // ASCII path: walk the engine's truecolor SGR output and paint each char
+  // onto the canvas. Cells with the same fg/bg coalesce into runs, mirroring
+  // the renderer's own batching.
+  function drawAscii(bytes) {
+    const w = canvas.width,
+      h = canvas.height;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, w, h);
+    ctx.font = ASCII_FONT;
+    ctx.textBaseline = "top";
+
+    let curFg = "#fff",
+      curBg = null;
+    let col = 0,
+      row = 0;
+    let i = 0;
+    const len = bytes.length;
+    while (i < len) {
+      const b = bytes[i];
+      if (b === 0x1b && bytes[i + 1] === 0x5b) {
+        // ESC [ — find the final byte ('m' = SGR, 'H' = cursor home).
+        let j = i + 2;
+        while (j < len && bytes[j] !== 0x6d && bytes[j] !== 0x48) j++;
+        const final = bytes[j];
+        if (final === 0x48) {
+          // Cursor home — irrelevant; we redraw the whole canvas each frame.
+          i = j + 1;
+          continue;
+        }
+        const params = String.fromCharCode.apply(null, bytes.subarray(i + 2, j));
+        const parts = params.split(";");
+        const head = +parts[0];
+        if (head === 0) {
+          curFg = "#fff";
+          curBg = null;
+        } else if (head === 38 && +parts[1] === 2) {
+          curFg = `rgb(${+parts[2]},${+parts[3]},${+parts[4]})`;
+        } else if (head === 48 && +parts[1] === 2) {
+          curBg = `rgb(${+parts[2]},${+parts[3]},${+parts[4]})`;
+        }
+        i = j + 1;
+      } else if (b === 0x0a) {
+        col = 0;
+        row++;
+        i++;
+      } else if (b === 0x0d) {
+        i++;
+      } else {
+        const x = col * ASCII_CHAR_W;
+        const y = row * ASCII_CHAR_H;
+        if (curBg) {
+          ctx.fillStyle = curBg;
+          ctx.fillRect(x, y, ASCII_CHAR_W, ASCII_CHAR_H);
+        }
+        ctx.fillStyle = curFg;
+        ctx.fillText(String.fromCharCode(b), x, y);
+        col++;
+        i++;
+      }
+    }
+  }
 
   // Frame loop. dt is wall-clock-derived so the simulation runs at the same
   // speed regardless of the browser's actual refresh rate.
@@ -110,9 +223,13 @@ const BADGE_MS = 3000;
     const dt = (now - last) / 1000;
     last = now;
     session.tick(dt);
-    const rgba = session.renderRgba();
-    imageData.data.set(rgba);
-    ctx.putImageData(imageData, 0, 0);
+    if (dims.mode === "ascii") {
+      drawAscii(session.render());
+    } else {
+      const rgba = session.renderRgba();
+      imageData.data.set(rgba);
+      ctx.putImageData(imageData, 0, 0);
+    }
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

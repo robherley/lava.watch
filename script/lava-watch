@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# script/lava-watch: build the npm bundle and run the CLI locally — the
+# dev-loop equivalent of `npx lava-watch`. Forwards all args:
+#   script/lava-watch              # default palette
+#   script/lava-watch uv           # ultraviolet
+#   script/lava-watch --ascii      # ASCII mode
+#   script/lava-watch --help       # help text
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+script/build-npm
+
+exec node npm/bin/lava-watch.js "$@"

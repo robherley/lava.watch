@@ -7,7 +7,16 @@
 //! - call [`Session::tick`] on a timer (typically 30fps)
 //! - call [`Session::render`] to produce the next ANSI frame to send back
 
-use crate::{term, Config as LavaConfig, Lava, Palette};
+use crate::{ascii, term, Config as LavaConfig, Lava, Palette};
+
+/// Which renderer [`Session::render`] dispatches to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenderMode {
+    /// `▀` half-block, two pixel samples packed per terminal cell.
+    HalfBlock,
+    /// Density ramp ASCII (` .:-=+*#%@`), one sample per cell.
+    Ascii,
+}
 
 /// How many frames the bottom-left palette badge stays visible after a switch.
 const OVERLAY_FRAMES: u32 = 90;
@@ -22,6 +31,8 @@ pub enum Input {
     PalettePrev,
     /// Toggle the photographic-negative render.
     ToggleInverted,
+    /// Toggle between half-block and ASCII renderers.
+    ToggleAscii,
     Exit,
     /// Left-button click at a 1-indexed terminal cell.
     Click {
@@ -40,6 +51,8 @@ pub fn parse_input(data: &[u8]) -> Option<Input> {
         b"\x1b[D" | b"\x1bOD" => return Some(Input::PalettePrev),
         // 'i' / 'I' toggle inverted render.
         b"i" | b"I" => return Some(Input::ToggleInverted),
+        // 'a' / 'A' toggle ASCII renderer.
+        b"a" | b"A" => return Some(Input::ToggleAscii),
         // 'q' / 'Q' quit (alongside Ctrl-C / Ctrl-D below).
         b"q" | b"Q" => return Some(Input::Exit),
         _ => {}
@@ -72,6 +85,7 @@ pub struct Session {
     lava: Lava,
     palette_idx: usize,
     overlay_frames: u32,
+    mode: RenderMode,
 }
 
 impl Session {
@@ -89,6 +103,7 @@ impl Session {
             lava,
             palette_idx,
             overlay_frames: 0,
+            mode: RenderMode::HalfBlock,
         }
     }
 
@@ -124,9 +139,13 @@ impl Session {
     }
 
     /// Append the next ANSI frame to `out` — lava body plus overlay if active.
-    /// Caller handles initial alt-screen entry / mouse-mode setup.
+    /// Caller handles initial alt-screen entry / mouse-mode setup. The
+    /// renderer is picked from [`Session::render_mode`].
     pub fn render(&self, out: &mut Vec<u8>) {
-        term::render(&self.lava, out);
+        match self.mode {
+            RenderMode::HalfBlock => term::render(&self.lava, out),
+            RenderMode::Ascii => ascii::render(&self.lava, out),
+        }
         if self.overlay_frames > 0 {
             let p = self.current_palette();
             let label = format!(" {} ", p.name());
@@ -181,6 +200,22 @@ impl Session {
         self.lava.inverted = !self.lava.inverted;
     }
 
+    pub fn render_mode(&self) -> RenderMode {
+        self.mode
+    }
+
+    pub fn set_render_mode(&mut self, mode: RenderMode) {
+        self.mode = mode;
+    }
+
+    /// Flip between half-block and ASCII renderers.
+    pub fn toggle_ascii(&mut self) {
+        self.mode = match self.mode {
+            RenderMode::HalfBlock => RenderMode::Ascii,
+            RenderMode::Ascii => RenderMode::HalfBlock,
+        };
+    }
+
     /// Heat blobs near a 1-indexed terminal cell. Accounts for the half-block
     /// double-pixel-row mapping on the y-axis.
     pub fn click(&mut self, col: u16, row: u16) {
@@ -202,6 +237,7 @@ impl Session {
             Input::PaletteNext => self.cycle_next(),
             Input::PalettePrev => self.cycle_prev(),
             Input::ToggleInverted => self.toggle_inverted(),
+            Input::ToggleAscii => self.toggle_ascii(),
             Input::Click { col, row } => self.click(col, row),
             Input::Exit => return true,
         }

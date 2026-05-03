@@ -19,6 +19,7 @@
 //! }
 //! ```
 
+pub mod ascii;
 mod help;
 mod palette;
 pub mod pixels;
@@ -30,5 +31,5 @@ pub mod term;
 pub use help::help_text;
 pub use palette::{Palette, ParsePaletteError};
 pub use rng::Rng;
-pub use session::{parse_input, Input, Session};
+pub use session::{parse_input, Input, RenderMode, Session};
 pub use sim::{Blob, Config, Lava};

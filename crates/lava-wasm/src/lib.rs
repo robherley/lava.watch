@@ -109,6 +109,16 @@ impl LavaSession {
         self.inner.toggle_inverted();
     }
 
+    #[wasm_bindgen(js_name = toggleAscii)]
+    pub fn toggle_ascii(&mut self) {
+        self.inner.toggle_ascii();
+    }
+
+    #[wasm_bindgen(js_name = isAsciiMode)]
+    pub fn is_ascii_mode(&self) -> bool {
+        matches!(self.inner.render_mode(), lava_engine::RenderMode::Ascii)
+    }
+
     /// Heat blobs near `(x, y)` in engine pixel coordinates. For canvas
     /// hosts: convert from canvas pixel coords with the same `(w, h)`
     /// returned by `pixelDimensions()`.

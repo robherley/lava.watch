@@ -30,6 +30,7 @@ If you just want the lamp without cloning or running an SSH client:
 ```sh
 npx lava-watch          # default palette
 npx lava-watch uv       # ultraviolet
+npx lava-watch --ascii  # start in ASCII mode (or hit `a` once running)
 npx lava-watch --help   # help info
 ```
 
@@ -55,8 +56,10 @@ http://localhost:8080/uv
 
 Anything that doesn't parse falls back to `classic`. Once connected,
 **← / →** cycles palettes (the new name flashes briefly in the
-bottom-left badge), and **left-click** anywhere on the lamp to heat that
-spot — nearby blobs warm up and rise.
+bottom-left badge), **i** inverts colors, **a** swaps in the ASCII
+renderer (` .:-=+*#%@` density ramp instead of half-blocks), and
+**left-click** anywhere on the lamp to heat that spot — nearby blobs
+warm up and rise.
 
 For the full palette list + aliases, two equivalent ways:
 
@@ -166,6 +169,7 @@ lava/
     ├── build-wasm      wasm-pack build → static bundle (web target)
     ├── build-npm       wasm-pack build → npm/pkg (nodejs target)
     ├── server          setup + build-wasm + run unified binary
+    ├── lava-watch      build-npm + run the CLI (dev-loop `npx lava-watch`)
     └── test            cargo fmt --check + clippy + test
 ```
 

@@ -8,9 +8,14 @@ const LEAVE_ALT = '\x1b[?25h\x1b[?1049l';
 const MOUSE_ON  = '\x1b[?1000h\x1b[?1006h';
 const MOUSE_OFF = '\x1b[?1006l\x1b[?1000l';
 
-const arg = process.argv[2];
+// Crude argv split: any `--ascii` flag toggles ASCII mode at startup; the
+// remaining positional (if any) is the palette name.
+const argv = process.argv.slice(2);
+const asciiFlag = argv.includes('--ascii');
+const positional = argv.filter((a) => !a.startsWith('-'));
+const arg = positional[0];
 
-if (arg === '--help' || arg === '-h') {
+if (argv.includes('--help') || argv.includes('-h')) {
   const bytes = wasm.paletteHelp(
     'lava — pick a palette as a command argument:',
     'npx lava-watch uv'
@@ -38,6 +43,8 @@ try {
   );
   process.exit(1);
 }
+
+if (asciiFlag) session.toggleAscii();
 
 let exiting = false;
 function cleanup(code) {
