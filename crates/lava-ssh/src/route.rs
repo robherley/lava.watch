@@ -3,7 +3,7 @@
 //!
 //! Two routes today: a static help doc, and the live lava lamp session.
 
-use lava_engine::{term, Palette, Session};
+use lava_engine::{help_text, term, Palette, Session};
 use russh::server::Handle;
 use russh::ChannelId;
 use std::net::SocketAddr;
@@ -16,7 +16,7 @@ const FRAME_PERIOD: Duration = Duration::from_millis(33); // ~30 fps
 /// Resolved per-username target. Constructed by [`Route::from_username`] and
 /// dispatched by the SSH handler.
 pub(crate) enum Route {
-    /// `ssh help@…` — print the palette cheat-sheet and disconnect.
+    /// `ssh help@…` — print the help text and disconnect.
     Help,
     /// Anything else — run the lava lamp with the parsed palette (or the
     /// default if the username doesn't match a known palette name).
@@ -52,7 +52,11 @@ pub(crate) struct LavaParams {
 
 /// Help route — write the palette doc, close the channel, done.
 pub(crate) async fn serve_help(handle: Handle, channel: ChannelId) {
-    let _ = handle.data(channel, help_text()).await;
+    let bytes = help_text(
+        "lava — pick a palette by SSH username:",
+        "ssh uv@lava.watch",
+    );
+    let _ = handle.data(channel, bytes).await;
     let _ = handle.close(channel).await;
 }
 
@@ -153,47 +157,4 @@ pub(crate) async fn serve_lava(
         reason,
         "session end"
     );
-}
-
-/// Build the doc shown to clients connecting as `help@lava.watch` —
-/// lists the palette usernames in their own color (bold) and one example.
-fn help_text() -> Vec<u8> {
-    use std::fmt::Write as _;
-    let mut s = String::new();
-    let width = Palette::ALL
-        .iter()
-        .map(|p| p.name().len())
-        .max()
-        .unwrap_or(0);
-    write!(s, "\r\n  lava — pick a palette by SSH username:\r\n\r\n").unwrap();
-    for p in Palette::ALL {
-        let names = p.input_names();
-        let canonical = names[0];
-        let aliases = &names[1..];
-        let (r, g, b) = p.accent();
-        let pad = width.saturating_sub(canonical.len());
-        write!(
-            s,
-            "    \x1b[1;38;2;{r};{g};{b}m{canonical}\x1b[0m{:pad$}",
-            "",
-        )
-        .unwrap();
-        if !aliases.is_empty() {
-            write!(s, "  (").unwrap();
-            for (i, a) in aliases.iter().enumerate() {
-                if i > 0 {
-                    write!(s, ", ").unwrap();
-                }
-                write!(s, "\x1b[1;38;2;{r};{g};{b}m{a}\x1b[0m").unwrap();
-            }
-            write!(s, ")").unwrap();
-        }
-        write!(s, "\r\n").unwrap();
-    }
-    write!(s, "\r\n  keys (in session):\r\n").unwrap();
-    write!(s, "    ← / →   cycle palettes\r\n").unwrap();
-    write!(s, "    i       invert colors\r\n").unwrap();
-    write!(s, "    q       quit\r\n").unwrap();
-    write!(s, "\r\n  example: ssh uv@lava.watch\r\n\r\n").unwrap();
-    s.into_bytes()
 }

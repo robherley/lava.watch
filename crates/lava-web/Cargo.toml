@@ -1,6 +1,7 @@
 [package]
 name = "lava-web"
 version = "0.1.0"
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "HTTP server for the canvas-rendered lava lamp web page."

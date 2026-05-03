@@ -129,6 +129,22 @@ impl Handler for LavaHandler {
         }
     }
 
+    /// Anything passed via `ssh … -- <cmd>` lands here. The server has no
+    /// commands to actually run — fall through to the help route so `ssh …
+    /// -- --help` (or `-- anything`) prints the help text instead of
+    /// hanging the client.
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut RusshSession,
+    ) -> Result<(), Self::Error> {
+        let cmd = std::str::from_utf8(data).unwrap_or("").trim().to_string();
+        info!(peer = ?self.peer, cmd = %cmd, "exec request — serving help");
+        tokio::spawn(serve_help(session.handle(), channel));
+        Ok(())
+    }
+
     async fn window_change_request(
         &mut self,
         _channel: ChannelId,

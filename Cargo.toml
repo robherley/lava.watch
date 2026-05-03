@@ -9,6 +9,7 @@ members = [
 ]
 
 [workspace.package]
+authors = ["Rob Herley <me@reb.gg>"]
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/robherley/lava.watch"

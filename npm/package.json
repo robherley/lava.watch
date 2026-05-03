@@ -1,0 +1,35 @@
+{
+  "name": "lava-watch",
+  "version": "0.1.1",
+  "description": "A lava lamp in your terminal — same engine as ssh lava.watch, compiled to WebAssembly and run locally.",
+  "author": "Rob Herley <me@reb.gg>",
+  "homepage": "https://lava.watch",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robherley/lava.watch.git"
+  },
+  "license": "MIT",
+  "bin": "./bin/lava-watch.js",
+  "files": [
+    "bin",
+    "pkg",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "preferGlobal": true,
+  "scripts": {
+    "build": "../script/build-npm",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "lava",
+    "lava-lamp",
+    "terminal",
+    "tui",
+    "ansi",
+    "wasm",
+    "cli"
+  ]
+}

@@ -149,3 +149,11 @@ impl LavaSession {
         self.inner.is_overlay_active()
     }
 }
+
+/// Build the help text bytes — the same content `ssh help@lava.watch`
+/// prints, parameterized by `tagline` and `example` so non-SSH transports
+/// (the npm CLI, …) can substitute their own invocation strings.
+#[wasm_bindgen(js_name = paletteHelp)]
+pub fn palette_help(tagline: &str, example: &str) -> Vec<u8> {
+    lava_engine::help_text(tagline, example)
+}

@@ -23,6 +23,20 @@ open http://localhost:8080/   # web transport (WASM in your browser)
 2. `script/build-wasm` — `wasm-pack`s the engine to `wasm32-unknown-unknown` so `lava-web` can embed it.
 3. `cargo run --release -p lava` — runs the all-in-one binary that hosts both transports.
 
+## Run it from npm
+
+If you just want the lamp without cloning or running an SSH client:
+
+```sh
+npx lava-watch          # default palette
+npx lava-watch uv       # ultraviolet
+npx lava-watch --help   # help info
+```
+
+Same engine, compiled to WebAssembly and shipped as a Node CLI — no network,
+no SSH required. Requires Node ≥ 18. Source: `npm/`, build with
+`script/build-npm`.
+
 ### Pick a palette
 
 By **SSH username** or by **URL path** — same parser, same aliases.
@@ -44,14 +58,17 @@ Anything that doesn't parse falls back to `classic`. Once connected,
 bottom-left badge), and **left-click** anywhere on the lamp to heat that
 spot — nearby blobs warm up and rise.
 
-For the full palette list + aliases, connect as `help`:
+For the full palette list + aliases, two equivalent ways:
 
 ```sh
 ssh help@localhost
+ssh localhost -- --help
 ```
 
-Prints a colored cheat-sheet and disconnects (no PTY required, no
-connection slot consumed).
+Both print the colored help text and disconnect (no PTY required, no
+connection slot consumed). The second form goes through `exec_request`,
+so any `-- <anything>` falls back to the help doc — there are no other
+commands to run.
 
 ## Configuration
 
@@ -141,11 +158,13 @@ lava/
 │   ├── lava/           single-binary entrypoint (ssh + web)
 │   ├── lava-engine/    simulation, palettes, term + pixels renderers, Session
 │   ├── lava-ssh/       SSH server library (russh)
-│   ├── lava-wasm/      wasm-bindgen wrapper exposing the canvas API
+│   ├── lava-wasm/      wasm-bindgen wrapper exposing the canvas + Node CLI API
 │   └── lava-web/       axum static-asset server library
+├── npm/                lava-watch CLI — lava-wasm wrapped as an npx-able Node bin
 └── script/
     ├── setup           generate dev host key (idempotent)
-    ├── build-wasm      wasm-pack build → static bundle
+    ├── build-wasm      wasm-pack build → static bundle (web target)
+    ├── build-npm       wasm-pack build → npm/pkg (nodejs target)
     ├── server          setup + build-wasm + run unified binary
     └── test            cargo fmt --check + clippy + test
 ```

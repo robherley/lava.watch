@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# script/build-npm: build the lava engine wasm bundle for Node.js and place it
+# in the npm/ package's pkg/ directory. Idempotent.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if ! command -v wasm-pack >/dev/null 2>&1; then
+  echo "wasm-pack not found — install with:" >&2
+  echo "  cargo install wasm-pack --locked" >&2
+  exit 1
+fi
+
+if ! rustup target list --installed | grep -q '^wasm32-unknown-unknown$'; then
+  echo "adding wasm32-unknown-unknown target"
+  rustup target add wasm32-unknown-unknown
+fi
+
+wasm-pack build crates/lava-wasm \
+  --target nodejs \
+  --out-dir "$PWD/npm/pkg" \
+  --no-typescript \
+  --no-pack \
+  --release
+
+# wasm-pack drops a `.gitignore` containing `*` into the output dir to keep
+# the bundle out of git — but npm honours subdirectory .gitignore files when
+# packing, so leaving it in place excludes the entire pkg/ from the published
+# tarball even with `files: ["pkg"]` in package.json. Strip it. (`--no-pack`
+# skips the auto-generated `pkg/package.json` but not this.)
+rm -f "$PWD/npm/pkg/.gitignore"
