@@ -13,6 +13,8 @@ mod tracker;
 use anyhow::{Context, Result};
 use russh::keys::PrivateKey;
 use russh::server::{Config as RusshConfig, Server};
+use russh::{compression, Preferred};
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
@@ -20,8 +22,26 @@ use tracing::info;
 const PRE_SHELL_TIMEOUT: Duration = Duration::from_secs(30);
 // Per-channel SSH flow-control window: how many bytes the client may send us
 // before stalling. Russh's default is much larger; we keep it tight because
-// we discard most client input and never grant more credit.
+// we discard most client input and never grant more credit. (This is the
+// server's *receive* window — the client's separate, much-larger advertised
+// window is what governs server→client throughput, not this.)
 const SSH_WINDOW_SIZE: u32 = 32 * 1024;
+
+// Prefer zlib over plaintext so animation frames (very repetitive ANSI)
+// compress 3-5×. `zlib@openssh.com` defers compression to post-auth, which
+// is what every modern OpenSSH client expects; plain `zlib` is a fallback;
+// `none` is last so old/embedded clients still negotiate successfully.
+const PREFERRED: Preferred = Preferred {
+    compression: Cow::Borrowed(&[
+        compression::ZLIB_LEGACY,
+        compression::ZLIB,
+        compression::NONE,
+    ]),
+    kex: Preferred::DEFAULT.kex,
+    key: Preferred::DEFAULT.key,
+    cipher: Preferred::DEFAULT.cipher,
+    mac: Preferred::DEFAULT.mac,
+};
 
 /// User-facing config. Constructed by the binary entrypoint (env, CLI flags,
 /// hardcoded for tests, etc.) and passed to [`run`].
@@ -51,6 +71,11 @@ pub async fn run(cfg: Config) -> Result<()> {
         keys: vec![key],
         inactivity_timeout: Some(PRE_SHELL_TIMEOUT),
         window_size: SSH_WINDOW_SIZE,
+        // Streaming an animation hates Nagle's algorithm: small periodic
+        // writes (one frame per ~33ms) get batched into ~200ms TCP groups
+        // and the eye sees the resulting jitter. Send each frame promptly.
+        nodelay: true,
+        preferred: PREFERRED,
         ..Default::default()
     });
 
