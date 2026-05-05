@@ -11,6 +11,7 @@ name = "lava_web"
 path = "src/lib.rs"
 
 [dependencies]
+lava-engine = { path = "../lava-engine" }
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 tower-http = { version = "0.6", features = ["compression-br", "compression-gzip"] }

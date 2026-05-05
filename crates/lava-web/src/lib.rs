@@ -7,13 +7,14 @@
 
 use anyhow::{Context, Result};
 use axum::{
-    extract::{ConnectInfo, Request},
+    extract::{ConnectInfo, Path, Request},
     http::{header, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
     Router,
 };
+use lava_engine::Palette;
 use std::hash::{DefaultHasher, Hasher};
 use std::net::SocketAddr;
 use std::time::Instant;
@@ -47,7 +48,16 @@ pub async fn run(cfg: Config) -> Result<()> {
 
     let app = Router::new()
         .route("/", get(move || async move { html(index_html) }))
-        .route("/{palette}", get(move || async move { html(index_html) }))
+        .route(
+            "/{palette}",
+            get(move |Path(palette): Path<String>| async move {
+                if palette.parse::<Palette>().is_ok() {
+                    html(index_html).into_response()
+                } else {
+                    (StatusCode::NOT_FOUND, "not found\n").into_response()
+                }
+            }),
+        )
         .route("/static/lava.js", get(move || async move { js(lava_js) }))
         .route("/static/lava_wasm.js", get(|| async { js(WASM_JS) }))
         .route("/static/lava_wasm_bg.wasm", get(|| async { wasm(WASM_BG) }))
