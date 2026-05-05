@@ -76,6 +76,7 @@ pub(crate) async fn serve_lava(
         max_time,
         speed,
     } = params;
+    let peer = peer.map(|p| p.to_string()).unwrap_or_default();
     let started = Instant::now();
     let mut session = Session::new(cols, rows, palette);
     session.set_speed(speed);
@@ -86,7 +87,7 @@ pub(crate) async fn serve_lava(
         .is_err()
     {
         info!(
-            peer = ?peer,
+            peer,
             duration_secs = started.elapsed().as_secs(),
             reason = "write_failed",
             "session end"
@@ -152,7 +153,7 @@ pub(crate) async fn serve_lava(
     let _ = handle.close(channel).await;
 
     info!(
-        peer = ?peer,
+        peer,
         duration_secs = started.elapsed().as_secs(),
         reason,
         "session end"

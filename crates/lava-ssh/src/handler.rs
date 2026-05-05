@@ -28,7 +28,8 @@ impl Server for LavaServer {
     type Handler = LavaHandler;
 
     fn new_client(&mut self, addr: Option<SocketAddr>) -> Self::Handler {
-        debug!(peer = ?addr, "client connected");
+        let peer = addr.map(|a| a.to_string()).unwrap_or_default();
+        debug!(peer, "client connected");
         LavaHandler {
             config: self.config.clone(),
             tracker: self.tracker.clone(),
@@ -121,7 +122,8 @@ impl Handler for LavaHandler {
 
         match route {
             Route::Help => {
-                info!(peer = ?self.peer, "help requested");
+                let peer = self.peer.map(|p| p.to_string()).unwrap_or_default();
+                info!(peer, "help requested");
                 tokio::spawn(serve_help(handle, channel));
                 Ok(())
             }
@@ -140,7 +142,8 @@ impl Handler for LavaHandler {
         session: &mut RusshSession,
     ) -> Result<(), Self::Error> {
         let cmd = std::str::from_utf8(data).unwrap_or("").trim().to_string();
-        info!(peer = ?self.peer, cmd = %cmd, "exec request — serving help");
+        let peer = self.peer.map(|p| p.to_string()).unwrap_or_default();
+        info!(peer, cmd, "exec request — serving help");
         tokio::spawn(serve_help(session.handle(), channel));
         Ok(())
     }
@@ -244,7 +247,8 @@ impl LavaHandler {
             .and_then(|ip| self.tracker.acquire(ip, self.config.max_per_ip));
 
         let Some(slot) = slot else {
-            warn!(peer = ?self.peer, "session refused: per-IP limit reached");
+            let peer = self.peer.map(|p| p.to_string()).unwrap_or_default();
+            warn!(peer, "session refused: per-IP limit reached");
             let msg = b"\r\ntoo many connections, try again shortly.\r\n";
             tokio::spawn(async move {
                 let _ = handle.data(channel, msg.to_vec()).await;
@@ -258,13 +262,17 @@ impl LavaHandler {
         self.msg_tx = Some(tx);
         let max_time = self.config.max_conn_time;
         let peer = self.peer;
+        let peer_str = peer.map(|p| p.to_string()).unwrap_or_default();
+        let term = self.pty_term.as_deref().unwrap_or("");
+        let banner = self.banner.as_deref().unwrap_or("");
+        let user = self.username.as_deref().unwrap_or("");
         info!(
-            peer = ?peer,
+            peer = peer_str,
             cols,
             rows,
-            term = ?self.pty_term,
-            banner = ?self.banner,
-            user = ?self.username,
+            term,
+            banner,
+            user,
             palette = palette.name(),
             "session start"
         );

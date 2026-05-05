@@ -107,14 +107,11 @@ fn build_assets() -> Assets {
 async fn log_request(req: Request, next: Next) -> Response {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
-    let peer = req
-        .extensions()
-        .get::<ConnectInfo<SocketAddr>>()
-        .map(|ConnectInfo(addr)| *addr);
+    let peer = client_addr(&req);
     let start = Instant::now();
     let res = next.run(req).await;
     info!(
-        peer = ?peer,
+        peer,
         %method,
         path,
         status = res.status().as_u16(),
@@ -122,6 +119,32 @@ async fn log_request(req: Request, next: Next) -> Response {
         "request"
     );
     res
+}
+
+/// Best-effort client address. Assumes running behind trusted proxy.
+fn client_addr(req: &Request) -> String {
+    if let Some(xff) = req.headers().get("x-forwarded-for") {
+        if let Ok(s) = xff.to_str() {
+            if let Some(first) = s.split(',').next() {
+                let trimmed = first.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+    }
+    if let Some(xri) = req.headers().get("x-real-ip") {
+        if let Ok(s) = xri.to_str() {
+            let trimmed = s.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+    req.extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ConnectInfo(addr)| addr.to_string())
+        .unwrap_or_default()
 }
 
 fn html(body: &'static [u8]) -> impl IntoResponse {
