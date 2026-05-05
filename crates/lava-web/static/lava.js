@@ -72,6 +72,9 @@ const BADGE_MS = 3000;
 
   const palette = window.location.pathname.replace(/^\/+|\/+$/g, "") || null;
   let session = new LavaSession(dims.w, dims.rows, palette);
+  // The web has its own DOM tips; suppress the engine's bottom keybind
+  // hints so they don't appear (e.g. in ASCII mode, which calls render()).
+  session.toggleHints();
 
   // RGBA-only: reusable ImageData onto the wasm-returned buffer.
   let imageData = ctx.createImageData(dims.w, dims.h);
@@ -98,12 +101,32 @@ const BADGE_MS = 3000;
     }
   }
 
+  // Sync the chrome text color (tips + hint strip) with the current
+  // palette + invert state. All chrome inherits via the --palette-text
+  // CSS variable, so a single setProperty cascades to every consumer.
+  function updateChromeColor() {
+    let [r, g, b] = session.currentPaletteText();
+    if (session.isInverted()) {
+      r = 255 - r; g = 255 - g; b = 255 - b;
+    }
+    document.documentElement.style.setProperty(
+      "--palette-text",
+      `rgb(${r}, ${g}, ${b})`
+    );
+  }
+  updateChromeColor();
+
   let badgeTimer = null;
   function flashBadge() {
     const name = session.currentPaletteName();
-    const [ar, ag, ab] = session.currentPaletteAccent();
-    const [br, bg, bb] = session.currentPaletteAccentBg();
-    badgeEl.textContent = name;
+    let [ar, ag, ab] = session.currentPaletteAccent();
+    let [br, bg, bb] = session.currentPaletteAccentBg();
+    const inv = session.isInverted();
+    if (inv) {
+      ar = 255 - ar; ag = 255 - ag; ab = 255 - ab;
+      br = 255 - br; bg = 255 - bg; bb = 255 - bb;
+    }
+    badgeEl.textContent = inv ? `${name} (inverted)` : name;
     badgeEl.style.color = `rgb(${ar}, ${ag}, ${ab})`;
     badgeEl.style.background = `rgb(${br}, ${bg}, ${bb})`;
     badgeEl.classList.add("show");
@@ -111,19 +134,32 @@ const BADGE_MS = 3000;
     badgeTimer = setTimeout(() => badgeEl.classList.remove("show"), BADGE_MS);
   }
 
-  // Keys: ←/→ cycle palettes, i invert, a toggle ASCII.
+  // Keys: ←/→ cycle palettes, i invert, a toggle ASCII, ? toggle hints.
+  // (Hints are pure DOM here — the engine's strip stays off for the web
+  // since we already called toggleHints() above.)
   document.addEventListener("keydown", (e) => {
     if (e.key === "ArrowRight") {
       session.cycleNext();
       flashBadge();
+      updateChromeColor();
     } else if (e.key === "ArrowLeft") {
       session.cyclePrev();
       flashBadge();
+      updateChromeColor();
     } else if (e.key === "i" || e.key === "I") {
       session.toggleInverted();
+      updateChromeColor();
+      // Re-flash so the badge picks up the new inverted colors + suffix
+      // (or strips them when going back to normal). Also gives visual
+      // feedback that 'i' did something.
+      flashBadge();
     } else if (e.key === "a" || e.key === "A") {
       session.toggleAscii();
       syncMode();
+    } else if (e.key === "?") {
+      // CSS keys off `body.no-hints` to fade the bottom hint strip and
+      // every .tip overlay together.
+      document.body.classList.toggle("no-hints");
     }
   });
 

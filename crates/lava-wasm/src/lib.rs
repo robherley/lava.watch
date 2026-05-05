@@ -109,6 +109,11 @@ impl LavaSession {
         self.inner.toggle_inverted();
     }
 
+    #[wasm_bindgen(js_name = isInverted)]
+    pub fn is_inverted(&self) -> bool {
+        self.inner.is_inverted()
+    }
+
     #[wasm_bindgen(js_name = toggleAscii)]
     pub fn toggle_ascii(&mut self) {
         self.inner.toggle_ascii();
@@ -117,6 +122,16 @@ impl LavaSession {
     #[wasm_bindgen(js_name = isAsciiMode)]
     pub fn is_ascii_mode(&self) -> bool {
         matches!(self.inner.render_mode(), lava_engine::RenderMode::Ascii)
+    }
+
+    #[wasm_bindgen(js_name = toggleHints)]
+    pub fn toggle_hints(&mut self) {
+        self.inner.toggle_hints();
+    }
+
+    #[wasm_bindgen(js_name = hintsVisible)]
+    pub fn hints_visible(&self) -> bool {
+        self.inner.hints_visible()
     }
 
     /// Heat blobs near `(x, y)` in engine pixel coordinates. For canvas
@@ -151,6 +166,14 @@ impl LavaSession {
     #[wasm_bindgen(js_name = currentPaletteAccentBg)]
     pub fn current_palette_accent_bg(&self) -> Vec<u8> {
         let (r, g, b) = self.inner.current_palette().accent_bg();
+        vec![r, g, b]
+    }
+
+    /// Returns `[r, g, b]` for the current palette's muted text color —
+    /// used for all web chrome (tips, hint strip) so it stays palette-tinted.
+    #[wasm_bindgen(js_name = currentPaletteText)]
+    pub fn current_palette_text(&self) -> Vec<u8> {
+        let (r, g, b) = self.inner.current_palette().text();
         vec![r, g, b]
     }
 

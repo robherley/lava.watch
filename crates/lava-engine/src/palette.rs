@@ -28,6 +28,21 @@ impl Palette {
         let (r, g, b) = self.colors().cool;
         (r as u8, g as u8, b as u8)
     }
+
+    /// Lower stop of the bg gradient — same color the lamp fades to at the
+    /// bottom. Used as the background for the keybind hint strip so it
+    /// blends with the lamp.
+    pub fn bg(&self) -> (u8, u8, u8) {
+        let (r, g, b) = self.colors().bg_bottom;
+        (r as u8, g as u8, b as u8)
+    }
+
+    /// Muted foreground color for chrome (keybind hint strip, web tips) —
+    /// chosen per-palette to be barely-visible on top of [`Palette::bg`].
+    pub fn text(&self) -> (u8, u8, u8) {
+        let (r, g, b) = self.colors().text;
+        (r as u8, g as u8, b as u8)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,11 +82,12 @@ impl FromStr for Palette {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PaletteColors {
     pub bg_top: (f32, f32, f32),
-    pub bg_bot: (f32, f32, f32),
+    pub bg_bottom: (f32, f32, f32),
     pub glow: (f32, f32, f32),
     pub cool: (f32, f32, f32),
     pub warm: (f32, f32, f32),
     pub hot: (f32, f32, f32),
+    pub text: (f32, f32, f32),
 }
 
 /// Map (palette colors, field intensity, local heat, vertical position
@@ -93,7 +109,7 @@ pub(crate) fn pixel_color(
         }
     };
 
-    let bg = lerp3(pal.bg_top, pal.bg_bot, v.clamp(0.0, 1.0));
+    let bg = lerp3(pal.bg_top, pal.bg_bottom, v.clamp(0.0, 1.0));
 
     if field < 0.55 {
         return finish(rgb(bg));

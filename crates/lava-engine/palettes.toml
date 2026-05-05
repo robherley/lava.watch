@@ -5,83 +5,65 @@
 # Color stops are `#RRGGBB` hex (case-insensitive, leading `#` optional).
 # `build.rs` parses each into an RGB triple. Add a palette by appending an
 # entry — the build script regenerates the enum + lookups.
+#
+#   bg   = [top, bottom]                — vertical bg gradient stops
+#   lava = [glow, cool, warm, hot]      — blob halo + cool→warm→hot body
+#   text                                — color of the bottom keybind hint
+#                                          strip + the web tips, picked to
+#                                          be barely visible on `bg[1]`.
 
 [[palette]]
 name = "classic"
 aliases = ["lava", "default"]
-bg_top = "#0a0616"
-bg_bot = "#160a20"
-glow = "#96232d"
-cool = "#73161e"
-warm = "#ff5f1e"
-hot = "#ffe65f"
+bg = ["#0a0616", "#160a20"]
+lava = ["#96232d", "#73161e", "#ff5f1e", "#ffe65f"]
+text = "#785058"
 
 [[palette]]
 name = "toxic"
 aliases = ["green", "radioactive"]
-bg_top = "#081208"
-bg_bot = "#0c1c0e"
-glow = "#3c781e"
-cool = "#285a19"
-warm = "#82dc32"
-hot = "#dcff78"
+bg = ["#081208", "#0c1c0e"]
+lava = ["#3c781e", "#285a19", "#82dc32", "#dcff78"]
+text = "#5e8658"
 
 [[palette]]
 name = "bubblegum"
 aliases = ["pink", "magenta"]
-bg_top = "#0f0519"
-bg_bot = "#1c0a23"
-glow = "#82285a"
-cool = "#6e1e50"
-warm = "#f05a96"
-hot = "#ffc8b4"
+bg = ["#0f0519", "#1c0a23"]
+lava = ["#82285a", "#6e1e50", "#f05a96", "#ffc8b4"]
+text = "#88587e"
 
 [[palette]]
 name = "mono"
 aliases = ["gray", "grey"]
-bg_top = "#08080a"
-bg_bot = "#121216"
-glow = "#3c3c46"
-cool = "#5a5a64"
-warm = "#b4b4be"
-hot = "#f0f0f5"
+bg = ["#08080a", "#121216"]
+lava = ["#3c3c46", "#5a5a64", "#b4b4be", "#f0f0f5"]
+text = "#72727c"
 
 [[palette]]
 name = "aurora"
 aliases = ["northern", "borealis"]
-bg_top = "#060e10"
-bg_bot = "#0a1416"
-glow = "#195a50"
-cool = "#145064"
-warm = "#46d2a0"
-hot = "#be8cff"
+bg = ["#060e10", "#0a1416"]
+lava = ["#195a50", "#145064", "#46d2a0", "#be8cff"]
+text = "#597a74"
 
 [[palette]]
 name = "ocean"
 aliases = ["cobalt", "electric", "ice"]
-bg_top = "#040714"
-bg_bot = "#070c1e"
-glow = "#123796"
-cool = "#0c2878"
-warm = "#3782ff"
-hot = "#c3e1ff"
+bg = ["#040714", "#070c1e"]
+lava = ["#123796", "#0c2878", "#3782ff", "#c3e1ff"]
+text = "#4e6a8e"
 
 [[palette]]
 name = "blood"
 aliases = ["crimson", "gore"]
-bg_top = "#0e0303"
-bg_bot = "#140404"
-glow = "#300808"
-cool = "#4b0a0a"
-warm = "#aa1616"
-hot = "#e62d2d"
+bg = ["#0e0303", "#140404"]
+lava = ["#300808", "#4b0a0a", "#aa1616", "#e62d2d"]
+text = "#804e4e"
 
 [[palette]]
 name = "ultraviolet"
 aliases = ["uv", "blacklight"]
-bg_top = "#0a0412"
-bg_bot = "#10061c"
-glow = "#370c64"
-cool = "#230546"
-warm = "#9628ff"
-hot = "#e1c3ff"
+bg = ["#0a0412", "#10061c"]
+lava = ["#370c64", "#230546", "#9628ff", "#e1c3ff"]
+text = "#6a5490"

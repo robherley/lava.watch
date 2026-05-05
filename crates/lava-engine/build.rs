@@ -13,12 +13,11 @@ struct PaletteToml {
     name: String,
     #[serde(default)]
     aliases: Vec<String>,
-    bg_top: String,
-    bg_bot: String,
-    glow: String,
-    cool: String,
-    warm: String,
-    hot: String,
+    /// `[top, bottom]` — vertical bg gradient.
+    bg: [String; 2],
+    /// `[glow, cool, warm, hot]` — blob halo + cool→warm→hot body.
+    lava: [String; 4],
+    text: String,
 }
 
 #[derive(Deserialize)]
@@ -101,12 +100,13 @@ fn main() {
             variant(&p.name)
         )
         .unwrap();
-        emit_field(&mut s, "bg_top", &p.bg_top);
-        emit_field(&mut s, "bg_bot", &p.bg_bot);
-        emit_field(&mut s, "glow", &p.glow);
-        emit_field(&mut s, "cool", &p.cool);
-        emit_field(&mut s, "warm", &p.warm);
-        emit_field(&mut s, "hot", &p.hot);
+        emit_field(&mut s, "bg_top", &p.bg[0]);
+        emit_field(&mut s, "bg_bottom", &p.bg[1]);
+        emit_field(&mut s, "glow", &p.lava[0]);
+        emit_field(&mut s, "cool", &p.lava[1]);
+        emit_field(&mut s, "warm", &p.lava[2]);
+        emit_field(&mut s, "hot", &p.lava[3]);
+        emit_field(&mut s, "text", &p.text);
         writeln!(s, "            }},").unwrap();
     }
     writeln!(s, "        }}").unwrap();

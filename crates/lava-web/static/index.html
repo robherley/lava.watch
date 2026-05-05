@@ -9,6 +9,12 @@
       href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌋</text></svg>'
     />
     <style>
+      :root {
+        /* Set from JS to the active palette's `text` color (with inversion
+           when the lamp is in negative mode). The rgba fallback only
+           matters if wasm fails to load. */
+        --palette-text: rgba(255, 255, 255, 0.4);
+      }
       html, body {
         margin: 0;
         padding: 0;
@@ -30,7 +36,9 @@
       #badge {
         position: absolute;
         left: 16px;
-        bottom: 16px;
+        /* Lifted above the keybind hint strip; matches the TUI's
+           "lift one row when hints are visible" behavior. */
+        bottom: 40px;
         padding: 4px 10px;
         font-size: 13px;
         font-weight: 600;
@@ -47,7 +55,8 @@
         top: 16px;
         font-size: 12px;
         line-height: 1.4;
-        color: rgba(255, 255, 255, 0.35);
+        color: var(--palette-text);
+        transition: color 200ms ease-out, opacity 200ms ease-out;
       }
       .tip-left { left: 16px; }
       .tip-right { right: 16px; }
@@ -62,7 +71,41 @@
         padding-bottom: 0.5px;
         transition: color 200ms ease-out;
       }
+      /* Hover stays at a neutral bright tone so the link still reads as
+         an interactive element regardless of how subtle the palette
+         text color is. */
       .repo:hover { color: rgba(255, 255, 255, 0.85); }
+      #hints {
+        position: absolute;
+        left: 16px;
+        bottom: 16px;
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--palette-text);
+        user-select: none;
+        pointer-events: none;
+        transition: opacity 200ms ease-out, color 200ms ease-out;
+      }
+      /* `?` toggles a body-level class that fades the bottom hint strip
+         plus every .tip overlay (top-left cmd lines + top-right source
+         link). pointer-events:none on the link so it's not clickable
+         while invisible. */
+      body.no-hints #hints,
+      body.no-hints .tip {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #hints kbd {
+        font: inherit;
+        font-weight: 600;
+        /* Inherit the palette hint color from #hints — bold alone is
+           the visual key/label distinction, matching the TUI strip. */
+        color: inherit;
+        padding: 0 1px;
+      }
+      #hints .sep {
+        margin: 0 6px;
+      }
     </style>
   </head>
   <body>
@@ -70,6 +113,7 @@
     <div id="badge"></div>
     <div class="tip tip-left">
       <div class="cmd">ssh lava.watch</div>
+      <div class="cmd">npx lava-watch</div>
     </div>
     <a
       class="tip tip-right repo"
@@ -78,6 +122,9 @@
       rel="noopener noreferrer"
       >source code</a
     >
+    <div id="hints">
+      <kbd>← / →</kbd> palette<span class="sep">·</span><kbd>i</kbd> invert<span class="sep">·</span><kbd>a</kbd> ascii<span class="sep">·</span><kbd>?</kbd> hints
+    </div>
     <script type="module" src="/static/lava.js?v=__LAVA_JS_HASH__"></script>
   </body>
 </html>

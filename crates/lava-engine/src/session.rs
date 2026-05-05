@@ -18,6 +18,16 @@ pub enum RenderMode {
     Ascii,
 }
 
+/// Bit-flip every channel — matches the engine's photographic-negative
+/// transform so chrome inverts in lockstep with the lamp.
+fn invert_if(c: (u8, u8, u8), inverted: bool) -> (u8, u8, u8) {
+    if inverted {
+        (255 - c.0, 255 - c.1, 255 - c.2)
+    } else {
+        c
+    }
+}
+
 /// How many frames the bottom-left palette badge stays visible after a switch.
 const OVERLAY_FRAMES: u32 = 90;
 
@@ -33,6 +43,8 @@ pub enum Input {
     ToggleInverted,
     /// Toggle between half-block and ASCII renderers.
     ToggleAscii,
+    /// Show / hide the bottom keybind hint strip.
+    ToggleHints,
     Exit,
     /// Left-button click at a 1-indexed terminal cell.
     Click {
@@ -53,6 +65,8 @@ pub fn parse_input(data: &[u8]) -> Option<Input> {
         b"i" | b"I" => return Some(Input::ToggleInverted),
         // 'a' / 'A' toggle ASCII renderer.
         b"a" | b"A" => return Some(Input::ToggleAscii),
+        // '?' toggles the bottom keybind hint strip.
+        b"?" => return Some(Input::ToggleHints),
         // 'q' / 'Q' quit (alongside Ctrl-C / Ctrl-D below).
         b"q" | b"Q" => return Some(Input::Exit),
         _ => {}
@@ -86,6 +100,7 @@ pub struct Session {
     palette_idx: usize,
     overlay_frames: u32,
     mode: RenderMode,
+    show_hints: bool,
 }
 
 impl Session {
@@ -104,6 +119,7 @@ impl Session {
             palette_idx,
             overlay_frames: 0,
             mode: RenderMode::HalfBlock,
+            show_hints: true,
         }
     }
 
@@ -138,9 +154,11 @@ impl Session {
         }
     }
 
-    /// Append the next ANSI frame to `out` — lava body plus overlay if active.
-    /// Caller handles initial alt-screen entry / mouse-mode setup. The
-    /// renderer is picked from [`Session::render_mode`].
+    /// Append the next ANSI frame to `out` — lava body, the bottom keybind
+    /// hint strip (unless hidden via `?`), and the transient palette badge
+    /// if a cycle just happened. Caller handles initial alt-screen entry /
+    /// mouse-mode setup. The renderer is picked from
+    /// [`Session::render_mode`].
     ///
     /// The frame is wrapped in DEC 2026 synchronized-output begin/end
     /// markers ([`term::BEGIN_SYNC`] / [`term::END_SYNC`]) so terminals that
@@ -151,18 +169,90 @@ impl Session {
             RenderMode::HalfBlock => term::render(&self.lava, out),
             RenderMode::Ascii => ascii::render(&self.lava, out),
         }
+        if self.show_hints {
+            self.render_hints(out);
+        }
         if self.overlay_frames > 0 {
             let p = self.current_palette();
-            let label = format!(" {} ", p.name());
-            let (fr, fg, fb) = p.accent();
-            let (br, bg, bb) = p.accent_bg();
+            let inv = self.lava.inverted;
+            let label = if inv {
+                format!(" {} (inverted) ", p.name())
+            } else {
+                format!(" {} ", p.name())
+            };
+            let (fr, fg, fb) = invert_if(p.accent(), inv);
+            let (br, bg, bb) = invert_if(p.accent_bg(), inv);
             let rows = self.lava.height / 2;
+            // Lift the badge one row when the hint strip is using the
+            // bottom one, otherwise the palette name renders on top of it.
+            let badge_row = if self.show_hints {
+                rows.saturating_sub(1).max(1)
+            } else {
+                rows
+            };
             let overlay = format!(
-                "\x1b[{rows};1H\x1b[1;38;2;{fr};{fg};{fb};48;2;{br};{bg};{bb}m{label}\x1b[0m"
+                "\x1b[{badge_row};1H\x1b[1;38;2;{fr};{fg};{fb};48;2;{br};{bg};{bb}m{label}\x1b[0m"
             );
             out.extend_from_slice(overlay.as_bytes());
         }
         out.extend_from_slice(term::END_SYNC);
+    }
+
+    /// Bottom-row keybind hints — left-aligned, palette `hint` fg on `bg`,
+    /// keys bolded for emphasis. Skipped silently if the terminal is too
+    /// narrow for the text. Inverts in lockstep with the lamp.
+    fn render_hints(&self, out: &mut Vec<u8>) {
+        use std::io::Write;
+        const HINTS: &[(&str, &str)] = &[
+            ("← / →", "palette"),
+            ("i", "invert"),
+            ("a", "ascii"),
+            ("?", "hints"),
+            ("q", "quit"),
+        ];
+        const SEP: &str = " · ";
+        const LEAD: u16 = 2;
+
+        let cols = self.lava.width;
+        let rows = self.lava.height / 2;
+        // Visual width: each (key, label) renders as `key + " " + label`,
+        // joined by SEP. SGR escapes don't print so they don't count.
+        let visual_len: u16 = HINTS
+            .iter()
+            .map(|(k, l)| (k.chars().count() + 1 + l.chars().count()) as u16)
+            .sum::<u16>()
+            + SEP.chars().count() as u16 * (HINTS.len() as u16).saturating_sub(1);
+        if visual_len + LEAD > cols {
+            return;
+        }
+        let pad_right = cols - visual_len - LEAD;
+        let p = self.current_palette();
+        let inv = self.lava.inverted;
+        let (fr, fg, fb) = invert_if(p.text(), inv);
+        let (br, bg, bb) = invert_if(p.bg(), inv);
+
+        // Position cursor + set base fg/bg, then leading indent.
+        let _ = write!(
+            out,
+            "\x1b[{rows};1H\x1b[38;2;{fr};{fg};{fb};48;2;{br};{bg};{bb}m  ",
+        );
+        for (i, (key, label)) in HINTS.iter().enumerate() {
+            if i > 0 {
+                out.extend_from_slice(SEP.as_bytes());
+            }
+            // SGR 1 turns bold on, 22 turns it off without disturbing
+            // fg/bg — so the key is bold and the label inherits the
+            // already-set hint color.
+            out.extend_from_slice(b"\x1b[1m");
+            out.extend_from_slice(key.as_bytes());
+            out.extend_from_slice(b"\x1b[22m ");
+            out.extend_from_slice(label.as_bytes());
+        }
+        // Right-pad with the active bg so the strip extends to the row's edge.
+        for _ in 0..pad_right {
+            out.push(b' ');
+        }
+        out.extend_from_slice(b"\x1b[0m");
     }
 
     /// Append the next frame as RGBA pixel bytes to `out` — for canvas-style
@@ -206,6 +296,10 @@ impl Session {
         self.lava.inverted = !self.lava.inverted;
     }
 
+    pub fn is_inverted(&self) -> bool {
+        self.lava.inverted
+    }
+
     pub fn render_mode(&self) -> RenderMode {
         self.mode
     }
@@ -220,6 +314,15 @@ impl Session {
             RenderMode::HalfBlock => RenderMode::Ascii,
             RenderMode::Ascii => RenderMode::HalfBlock,
         };
+    }
+
+    /// Show / hide the bottom keybind hint strip.
+    pub fn toggle_hints(&mut self) {
+        self.show_hints = !self.show_hints;
+    }
+
+    pub fn hints_visible(&self) -> bool {
+        self.show_hints
     }
 
     /// Heat blobs near a 1-indexed terminal cell. Accounts for the half-block
@@ -244,6 +347,7 @@ impl Session {
             Input::PalettePrev => self.cycle_prev(),
             Input::ToggleInverted => self.toggle_inverted(),
             Input::ToggleAscii => self.toggle_ascii(),
+            Input::ToggleHints => self.toggle_hints(),
             Input::Click { col, row } => self.click(col, row),
             Input::Exit => return true,
         }
@@ -309,13 +413,37 @@ mod tests {
         s.cycle_next();
         assert_ne!(s.current_palette(), initial);
         // First post-cycle render should include the absolute-position escape
-        // for the bottom-left overlay.
+        // for the badge. With hints visible by default the badge is lifted
+        // one row off the bottom (row 19 of 20).
         let mut buf = Vec::new();
         s.render(&mut buf);
         let bytes = std::str::from_utf8(&buf).unwrap();
         assert!(
+            bytes.contains("\x1b[19;1H"),
+            "expected lifted badge positioning escape"
+        );
+        // After hiding the hint strip, the badge drops back to the bottom row.
+        s.toggle_hints();
+        buf.clear();
+        s.render(&mut buf);
+        let bytes = std::str::from_utf8(&buf).unwrap();
+        assert!(
             bytes.contains("\x1b[20;1H"),
-            "expected overlay positioning escape"
+            "expected bottom-row badge positioning when hints hidden"
+        );
+    }
+
+    #[test]
+    fn badge_marks_inverted_state() {
+        let mut s = Session::new(40, 20, Palette::Classic);
+        s.toggle_inverted();
+        s.cycle_next();
+        let mut buf = Vec::new();
+        s.render(&mut buf);
+        let bytes = std::str::from_utf8(&buf).unwrap();
+        assert!(
+            bytes.contains("(inverted)"),
+            "expected `(inverted)` suffix on badge label when lamp is inverted"
         );
     }
 
