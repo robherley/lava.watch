@@ -218,11 +218,14 @@ const BADGE_MS = 3000;
   }
 
   // Frame loop. dt is wall-clock-derived so the simulation runs at the same
-  // speed regardless of the browser's actual refresh rate.
+  // speed regardless of the browser's actual refresh rate. Capped so a
+  // backgrounded tab (rAF pauses while hidden) or a long debugger break
+  // can't lurch the sim forward by seconds when focus returns.
+  const MAX_DT = 0.25;
   let last = performance.now();
   const frame = () => {
     const now = performance.now();
-    const dt = (now - last) / 1000;
+    const dt = Math.min((now - last) / 1000, MAX_DT);
     last = now;
     session.tick(dt);
     if (dims.mode === "ascii") {
