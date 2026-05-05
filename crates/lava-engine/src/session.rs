@@ -141,7 +141,12 @@ impl Session {
     /// Append the next ANSI frame to `out` — lava body plus overlay if active.
     /// Caller handles initial alt-screen entry / mouse-mode setup. The
     /// renderer is picked from [`Session::render_mode`].
+    ///
+    /// The frame is wrapped in DEC 2026 synchronized-output begin/end
+    /// markers ([`term::BEGIN_SYNC`] / [`term::END_SYNC`]) so terminals that
+    /// support it flip the screen atomically — no tearing on slow links.
     pub fn render(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(term::BEGIN_SYNC);
         match self.mode {
             RenderMode::HalfBlock => term::render(&self.lava, out),
             RenderMode::Ascii => ascii::render(&self.lava, out),
@@ -157,6 +162,7 @@ impl Session {
             );
             out.extend_from_slice(overlay.as_bytes());
         }
+        out.extend_from_slice(term::END_SYNC);
     }
 
     /// Append the next frame as RGBA pixel bytes to `out` — for canvas-style

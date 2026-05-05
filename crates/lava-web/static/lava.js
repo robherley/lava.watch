@@ -173,26 +173,28 @@ const BADGE_MS = 3000;
     while (i < len) {
       const b = bytes[i];
       if (b === 0x1b && bytes[i + 1] === 0x5b) {
-        // ESC [ — find the final byte ('m' = SGR, 'H' = cursor home).
+        // CSI: ESC [ <param bytes 0x30-0x3F> <intermediate 0x20-0x2F>
+        // <final 0x40-0x7E>. We only act on `m` (SGR) and `H` (cursor pos);
+        // other CSI escapes (`?2026h/l` for sync output, etc.) are walked
+        // past so they don't swallow following content.
         let j = i + 2;
-        while (j < len && bytes[j] !== 0x6d && bytes[j] !== 0x48) j++;
+        while (j < len && bytes[j] >= 0x20 && bytes[j] <= 0x3f) j++;
         const final = bytes[j];
-        if (final === 0x48) {
-          // Cursor home — irrelevant; we redraw the whole canvas each frame.
-          i = j + 1;
-          continue;
+        if (final === 0x6d /* m */) {
+          const params = String.fromCharCode.apply(null, bytes.subarray(i + 2, j));
+          const parts = params.split(";");
+          const head = +parts[0];
+          if (head === 0) {
+            curFg = "#fff";
+            curBg = null;
+          } else if (head === 38 && +parts[1] === 2) {
+            curFg = `rgb(${+parts[2]},${+parts[3]},${+parts[4]})`;
+          } else if (head === 48 && +parts[1] === 2) {
+            curBg = `rgb(${+parts[2]},${+parts[3]},${+parts[4]})`;
+          }
         }
-        const params = String.fromCharCode.apply(null, bytes.subarray(i + 2, j));
-        const parts = params.split(";");
-        const head = +parts[0];
-        if (head === 0) {
-          curFg = "#fff";
-          curBg = null;
-        } else if (head === 38 && +parts[1] === 2) {
-          curFg = `rgb(${+parts[2]},${+parts[3]},${+parts[4]})`;
-        } else if (head === 48 && +parts[1] === 2) {
-          curBg = `rgb(${+parts[2]},${+parts[3]},${+parts[4]})`;
-        }
+        // For 'H' (cursor pos) we redraw the whole canvas anyway so it's
+        // a no-op; same for any other CSI final byte we don't recognise.
         i = j + 1;
       } else if (b === 0x0a) {
         col = 0;
@@ -216,11 +218,14 @@ const BADGE_MS = 3000;
   }
 
   // Frame loop. dt is wall-clock-derived so the simulation runs at the same
-  // speed regardless of the browser's actual refresh rate.
+  // speed regardless of the browser's actual refresh rate. Capped so a
+  // backgrounded tab (rAF pauses while hidden) or a long debugger break
+  // can't lurch the sim forward by seconds when focus returns.
+  const MAX_DT = 0.25;
   let last = performance.now();
   const frame = () => {
     const now = performance.now();
-    const dt = (now - last) / 1000;
+    const dt = Math.min((now - last) / 1000, MAX_DT);
     last = now;
     session.tick(dt);
     if (dims.mode === "ascii") {

@@ -24,6 +24,15 @@ pub const MOUSE_ENABLE: &[u8] = b"\x1b[?1000h\x1b[?1006h";
 /// Disable SGR mouse reporting — write once before tearing down a session.
 pub const MOUSE_DISABLE: &[u8] = b"\x1b[?1006l\x1b[?1000l";
 
+/// Begin synchronized output (DEC mode 2026). Modern terminals (iTerm2,
+/// ghostty, kitty, alacritty, foot, wezterm, contour, …) buffer everything
+/// between `BEGIN_SYNC` and `END_SYNC` and flip the screen atomically — no
+/// half-drawn frames, no tearing on full-frame redraws over a slow link.
+/// Terminals that don't recognise the sequence ignore it silently.
+pub const BEGIN_SYNC: &[u8] = b"\x1b[?2026h";
+/// End synchronized output and flush the buffered frame to the screen.
+pub const END_SYNC: &[u8] = b"\x1b[?2026l";
+
 /// Append a full ANSI frame to `out`. The frame begins with cursor-home
 /// (`ESC[H`) so successive frames overwrite in place — the caller is
 /// responsible for the initial screen clear (see [`ENTER_ALT_SCREEN`]).

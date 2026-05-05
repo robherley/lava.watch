@@ -20,7 +20,9 @@ use tracing::info;
 const PRE_SHELL_TIMEOUT: Duration = Duration::from_secs(30);
 // Per-channel SSH flow-control window: how many bytes the client may send us
 // before stalling. Russh's default is much larger; we keep it tight because
-// we discard most client input and never grant more credit.
+// we discard most client input and never grant more credit. (This is the
+// server's *receive* window — the client's separate, much-larger advertised
+// window is what governs server→client throughput, not this.)
 const SSH_WINDOW_SIZE: u32 = 32 * 1024;
 
 /// User-facing config. Constructed by the binary entrypoint (env, CLI flags,
@@ -51,6 +53,10 @@ pub async fn run(cfg: Config) -> Result<()> {
         keys: vec![key],
         inactivity_timeout: Some(PRE_SHELL_TIMEOUT),
         window_size: SSH_WINDOW_SIZE,
+        // Streaming an animation hates Nagle's algorithm: small periodic
+        // writes (one frame per ~33ms) get batched into ~200ms TCP groups
+        // and the eye sees the resulting jitter. Send each frame promptly.
+        nodelay: true,
         ..Default::default()
     });
 
