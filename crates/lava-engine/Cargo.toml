@@ -9,7 +9,7 @@ build = "build.rs"
 
 [build-dependencies]
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+toml = "1.1"
 
 [dev-dependencies]
 crossterm = "0.28"
