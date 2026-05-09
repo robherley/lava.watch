@@ -13,7 +13,7 @@ toml = "0.8"
 
 [dev-dependencies]
 crossterm = "0.28"
-criterion = { version = "0.5", default-features = false }
+criterion = { version = "0.8", default-features = false }
 
 [[bench]]
 name = "render"
