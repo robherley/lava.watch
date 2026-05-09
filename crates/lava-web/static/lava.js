@@ -71,7 +71,7 @@ const BADGE_MS = 3000;
   canvas.height = dims.h;
 
   const palette = window.location.pathname.replace(/^\/+|\/+$/g, "") || null;
-  let session = new LavaSession(dims.w, dims.rows, palette);
+  const session = new LavaSession(dims.w, dims.rows, palette);
   // The web has its own DOM tips; suppress the engine's bottom keybind
   // hints so they don't appear (e.g. in ASCII mode, which calls render()).
   session.toggleHints();
@@ -107,7 +107,9 @@ const BADGE_MS = 3000;
   function updateChromeColor() {
     let [r, g, b] = session.currentPaletteText();
     if (session.isInverted()) {
-      r = 255 - r; g = 255 - g; b = 255 - b;
+      r = 255 - r;
+      g = 255 - g;
+      b = 255 - b;
     }
     document.documentElement.style.setProperty(
       "--palette-text",
@@ -123,8 +125,12 @@ const BADGE_MS = 3000;
     let [br, bg, bb] = session.currentPaletteAccentBg();
     const inv = session.isInverted();
     if (inv) {
-      ar = 255 - ar; ag = 255 - ag; ab = 255 - ab;
-      br = 255 - br; bg = 255 - bg; bb = 255 - bb;
+      ar = 255 - ar;
+      ag = 255 - ag;
+      ab = 255 - ab;
+      br = 255 - br;
+      bg = 255 - bg;
+      bb = 255 - bb;
     }
     badgeEl.textContent = inv ? `${name} (inverted)` : name;
     badgeEl.style.color = `rgb(${ar}, ${ag}, ${ab})`;
@@ -217,7 +223,10 @@ const BADGE_MS = 3000;
         while (j < len && bytes[j] >= 0x20 && bytes[j] <= 0x3f) j++;
         const final = bytes[j];
         if (final === 0x6d /* m */) {
-          const params = String.fromCharCode.apply(null, bytes.subarray(i + 2, j));
+          const params = String.fromCharCode.apply(
+            null,
+            bytes.subarray(i + 2, j)
+          );
           const parts = params.split(";");
           const head = +parts[0];
           if (head === 0) {

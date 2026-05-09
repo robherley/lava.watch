@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# script/lint: run all lints (Rust fmt + clippy, Biome). Used by humans and CI.
+# Pass --fix to apply auto-fixes instead of just checking.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+fix=0
+for arg in "$@"; do
+  case "$arg" in
+    --fix) fix=1 ;;
+    *) echo "unknown arg: $arg" >&2; exit 2 ;;
+  esac
+done
+
+fmt_args=(--all)
+clippy_args=(--all-targets --no-deps)
+if [ "$fix" -eq 1 ]; then
+  clippy_args+=(--fix --allow-dirty --allow-staged)
+else
+  fmt_args+=(-- --check)
+fi
+cargo fmt "${fmt_args[@]}"
+cargo clippy "${clippy_args[@]}" -- -D warnings
+
+for cmd in npx jq; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "$cmd not found — required to run biome" >&2
+    exit 1
+  fi
+done
+
+# Pin biome to whatever version biome.json's $schema URL points at, so CI
+# (biomejs/setup-biome auto-detects from the same field) and local runs match.
+biome_version=$(jq -r '."$schema" | capture("schemas/(?<v>[^/]+)/").v' biome.json)
+if [ -z "$biome_version" ] || [ "$biome_version" = "null" ]; then
+  echo "could not parse biome version from biome.json \$schema field" >&2
+  exit 1
+fi
+biome_cmd=(npx --yes "@biomejs/biome@${biome_version}")
+
+if [ "$fix" -eq 1 ]; then
+  "${biome_cmd[@]}" check --write .
+else
+  "${biome_cmd[@]}" ci .
+fi

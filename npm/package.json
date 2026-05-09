@@ -16,9 +16,8 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
-  "preferGlobal": true,
   "scripts": {
     "build": "../script/build-npm",
     "prepublishOnly": "npm run build"
