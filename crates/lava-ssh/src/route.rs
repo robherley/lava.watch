@@ -1,17 +1,19 @@
 //! Username-based routing — every shell request lands here, gets matched
 //! to a [`Route`], and dispatches to a handler that runs in a spawned task.
 //!
-//! Two routes today: a static help doc, and the live lava lamp session.
+//! Two routes today: a static help doc, and the live lava lamp session. The
+//! lamp's frame loop lives in [`lava_term::run_session`]; this module just
+//! adapts a russh channel into a [`FrameSink`] and handles SSH-specific setup
+//! and logging around it.
 
-use lava_engine::{help_text, term, Palette, Session};
+use lava_engine::{help_text, Palette, Session};
+use lava_term::{FrameSink, SessionMsg};
 use russh::server::Handle;
 use russh::ChannelId;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tracing::info;
-
-const FRAME_PERIOD: Duration = Duration::from_millis(33); // ~30 fps
 
 /// Resolved per-username target. Constructed by [`Route::from_username`] and
 /// dispatched by the SSH handler.
@@ -30,12 +32,6 @@ impl Route {
             user => Self::Lava(user.map(Session::palette_from_str).unwrap_or_default()),
         }
     }
-}
-
-/// Out-of-band events the russh handler ships to a running [`serve_lava`] task.
-pub(crate) enum SessionMsg {
-    Input(Vec<u8>),
-    Resize(u16, u16),
 }
 
 /// Everything `serve_lava` needs to run the frame loop. Built once in the
@@ -60,12 +56,29 @@ pub(crate) async fn serve_help(handle: Handle, channel: ChannelId) {
     let _ = handle.close(channel).await;
 }
 
-/// Lava route — own a [`Session`], push ANSI frames at `FRAME_PERIOD`, drain
-/// inbound key/resize events, exit on disconnect / deadline / Ctrl-C.
+/// SSH byte sink — writes frames to a russh channel and closes it on shutdown.
+struct SshSink {
+    handle: Handle,
+    channel: ChannelId,
+}
+
+impl FrameSink for SshSink {
+    async fn write(&mut self, bytes: &[u8]) -> bool {
+        self.handle.data(self.channel, bytes.to_vec()).await.is_ok()
+    }
+
+    async fn shutdown(&mut self) {
+        let _ = self.handle.close(self.channel).await;
+    }
+}
+
+/// Lava route — build the session, hand the frame loop to [`lava_term`], and
+/// log the outcome. The matching `session start` log is emitted by the handler
+/// before this task is spawned.
 pub(crate) async fn serve_lava(
     params: LavaParams,
     handle: Handle,
-    mut msg_rx: mpsc::Receiver<SessionMsg>,
+    msg_rx: mpsc::Receiver<SessionMsg>,
 ) {
     let LavaParams {
         peer,
@@ -78,84 +91,17 @@ pub(crate) async fn serve_lava(
     } = params;
     let peer = peer.map(|p| p.to_string()).unwrap_or_default();
     let started = Instant::now();
+
     let mut session = Session::new(cols, rows, palette);
     session.set_speed(speed);
 
-    if handle
-        .data(channel, term::ENTER_ALT_SCREEN.to_vec())
-        .await
-        .is_err()
-    {
-        info!(
-            peer,
-            duration_secs = started.elapsed().as_secs(),
-            reason = "write_failed",
-            "session end"
-        );
-        return;
-    }
-    let _ = handle.data(channel, term::MOUSE_ENABLE.to_vec()).await;
-
-    let mut buf: Vec<u8> = Vec::with_capacity(cols as usize * rows as usize * 24);
-    let mut interval = tokio::time::interval(FRAME_PERIOD);
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-    let deadline = tokio::time::sleep(max_time);
-    tokio::pin!(deadline);
-
-    // Wall-clock dt so a slow tick (CPU, network, scheduler hiccup) doesn't
-    // make the simulation fall behind real time and stutter on catch-up.
-    // Capped so a long pause (suspend, debugger, …) can't lurch the sim
-    // forward by seconds.
-    let mut last_tick = Instant::now();
-    const MAX_DT: f32 = 0.25;
-
-    let reason: &'static str;
-    loop {
-        tokio::select! {
-            _ = interval.tick() => {
-                let now = Instant::now();
-                let dt = (now - last_tick).as_secs_f32().min(MAX_DT);
-                last_tick = now;
-                session.tick(dt);
-                buf.clear();
-                session.render(&mut buf);
-                if handle.data(channel, buf.clone()).await.is_err() {
-                    reason = "disconnect";
-                    break;
-                }
-            }
-            Some(msg) = msg_rx.recv() => match msg {
-                SessionMsg::Input(bytes) => {
-                    if session.feed_input(&bytes) {
-                        reason = "client_exit";
-                        break;
-                    }
-                }
-                SessionMsg::Resize(c, r) => {
-                    session.resize(c, r);
-                    buf.reserve(c as usize * r as usize * 24);
-                }
-            },
-            _ = &mut deadline => {
-                reason = "timeout";
-                break;
-            }
-        }
-    }
-
-    if reason == "timeout" {
-        let bye = b"\r\n\x1b[0m*** session timed out ***\r\n";
-        let _ = handle.data(channel, bye.to_vec()).await;
-    }
-    let _ = handle.data(channel, term::MOUSE_DISABLE.to_vec()).await;
-    let _ = handle.data(channel, term::LEAVE_ALT_SCREEN.to_vec()).await;
-    let _ = handle.close(channel).await;
+    let sink = SshSink { handle, channel };
+    let reason = lava_term::run_session(sink, session, msg_rx, max_time, &[]).await;
 
     info!(
         peer,
         duration_secs = started.elapsed().as_secs(),
-        reason,
+        reason = reason.as_str(),
         "session end"
     );
 }

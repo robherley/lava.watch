@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # script/server: build the wasm bundle, prep a dev SSH host key, run the
-# all-in-one `lava` binary (SSH + web).
+# all-in-one `lava` binary (SSH + telnet + web).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -8,7 +8,13 @@ script/setup
 script/build-wasm
 
 export LAVA_HOST_KEY="${LAVA_HOST_KEY:-$(cat .dev/host_key)}"
-export LAVA_PORT="${LAVA_PORT:-5282}"
+export LAVA_SSH_PORT="${LAVA_SSH_PORT:-2323}"
+export LAVA_TELNET_PORT="${LAVA_TELNET_PORT:-5282}"
 export LAVA_WEB_PORT="${LAVA_WEB_PORT:-8080}"
+
+echo "lava transports:"
+echo "  ssh -p ${LAVA_SSH_PORT} localhost"
+echo "  telnet localhost ${LAVA_TELNET_PORT}"
+echo "  open http://localhost:${LAVA_WEB_PORT}/"
 
 exec cargo run --release -p lava

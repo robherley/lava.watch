@@ -4,10 +4,10 @@
 //! then on `shell_request` consults [`Route`] and spawns the appropriate
 //! task (help doc or lava session).
 
-use crate::route::{serve_help, serve_lava, LavaParams, Route, SessionMsg};
-use crate::tracker::{ConnSlot, ConnTracker};
+use crate::route::{serve_help, serve_lava, LavaParams, Route};
 use crate::Config;
 use lava_engine::parse_input;
+use lava_term::{clamp_size, ConnSlot, ConnTracker, SessionMsg};
 use russh::keys::ssh_key::PublicKey;
 use russh::server::{Auth, Handler, Msg, Server, Session as RusshSession};
 use russh::{Channel, ChannelId, Pty};
@@ -15,9 +15,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
-
-const MAX_COLS: u16 = 512;
-const MAX_ROWS: u16 = 256;
 
 pub(crate) struct LavaServer {
     pub config: Arc<Config>,
@@ -105,8 +102,10 @@ impl Handler for LavaHandler {
         _modes: &[(Pty, u32)],
         _session: &mut RusshSession,
     ) -> Result<(), Self::Error> {
-        let cols = (col_width.min(u16::MAX as u32) as u16).clamp(1, MAX_COLS);
-        let rows = (row_height.min(u16::MAX as u32) as u16).clamp(1, MAX_ROWS);
+        let (cols, rows) = clamp_size(
+            col_width.min(u16::MAX as u32) as u16,
+            row_height.min(u16::MAX as u32) as u16,
+        );
         self.pty_size = Some((cols, rows));
         self.pty_term = Some(term.to_string());
         Ok(())
@@ -157,8 +156,10 @@ impl Handler for LavaHandler {
         _pix_height: u32,
         _session: &mut RusshSession,
     ) -> Result<(), Self::Error> {
-        let cols = (col_width.min(u16::MAX as u32) as u16).clamp(1, MAX_COLS);
-        let rows = (row_height.min(u16::MAX as u32) as u16).clamp(1, MAX_ROWS);
+        let (cols, rows) = clamp_size(
+            col_width.min(u16::MAX as u32) as u16,
+            row_height.min(u16::MAX as u32) as u16,
+        );
         if let Some(tx) = &self.msg_tx {
             // Drop overflow rather than back up memory if a client floods resizes.
             let _ = tx.try_send(SessionMsg::Resize(cols, rows));
@@ -249,9 +250,8 @@ impl LavaHandler {
         let Some(slot) = slot else {
             let peer = self.peer.map(|p| p.to_string()).unwrap_or_default();
             warn!(peer, "session refused: per-IP limit reached");
-            let msg = b"\r\ntoo many connections, try again shortly.\r\n";
             tokio::spawn(async move {
-                let _ = handle.data(channel, msg.to_vec()).await;
+                let _ = handle.data(channel, lava_term::BUSY_MESSAGE.to_vec()).await;
                 let _ = handle.close(channel).await;
             });
             return Ok(());

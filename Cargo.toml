@@ -4,6 +4,8 @@ members = [
     "crates/lava",
     "crates/lava-engine",
     "crates/lava-ssh",
+    "crates/lava-telnet",
+    "crates/lava-term",
     "crates/lava-wasm",
     "crates/lava-web",
 ]

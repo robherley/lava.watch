@@ -8,7 +8,6 @@
 
 mod handler;
 mod route;
-mod tracker;
 
 use anyhow::{Context, Result};
 use russh::keys::PrivateKey;
@@ -62,7 +61,7 @@ pub async fn run(cfg: Config) -> Result<()> {
 
     let mut server = handler::LavaServer {
         config: Arc::new(cfg.clone()),
-        tracker: Arc::new(tracker::ConnTracker::default()),
+        tracker: Arc::new(lava_term::ConnTracker::default()),
     };
 
     let bind = format!("0.0.0.0:{}", cfg.port);

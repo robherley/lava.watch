@@ -1,0 +1,21 @@
+[package]
+name = "lava-telnet"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Telnet server that streams a lava lamp to every connection."
+
+[lib]
+name = "lava_telnet"
+path = "src/lib.rs"
+
+[dependencies]
+lava-engine = { path = "../lava-engine" }
+lava-term = { path = "../lava-term" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "io-util"] }
+anyhow = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "net", "io-util"] }

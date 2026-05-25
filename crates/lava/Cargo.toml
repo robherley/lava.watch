@@ -4,7 +4,7 @@ version = "0.1.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "All-in-one lava server — SSH + web from a single static binary."
+description = "All-in-one lava server — SSH + telnet + web from a single static binary."
 
 [[bin]]
 name = "lava"
@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 lava-ssh = { path = "../lava-ssh" }
+lava-telnet = { path = "../lava-telnet" }
 lava-web = { path = "../lava-web" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 anyhow = "1"

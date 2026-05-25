@@ -1,0 +1,15 @@
+[package]
+name = "lava-term"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared terminal-transport plumbing (frame loop, per-IP tracker, constants) for the SSH and telnet servers."
+
+[lib]
+name = "lava_term"
+path = "src/lib.rs"
+
+[dependencies]
+lava-engine = { path = "../lava-engine" }
+tokio = { version = "1", features = ["sync", "time", "macros"] }
