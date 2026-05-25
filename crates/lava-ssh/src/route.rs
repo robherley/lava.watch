@@ -92,7 +92,7 @@ pub(crate) async fn serve_lava(
     let peer = peer.map(|p| p.to_string()).unwrap_or_default();
     let started = Instant::now();
 
-    let mut session = Session::new(cols, rows, palette);
+    let mut session = Session::with_seed(cols, rows, palette, lava_term::random_seed());
     session.set_speed(speed);
 
     let sink = SshSink { handle, channel };

@@ -104,12 +104,23 @@ pub struct Session {
 }
 
 impl Session {
+    /// Construct with the engine's fixed default seed — every session starts
+    /// from the same blob layout. Use [`Session::with_seed`] for per-session
+    /// variety.
     pub fn new(cols: u16, rows: u16, palette: Palette) -> Self {
+        Self::with_seed(cols, rows, palette, LavaConfig::default().seed)
+    }
+
+    /// Like [`Session::new`] but with an explicit RNG seed, so each live
+    /// session (a new SSH/telnet connection, a fresh browser load) can start
+    /// from a different arrangement of blobs.
+    pub fn with_seed(cols: u16, rows: u16, palette: Palette, seed: u64) -> Self {
         let lava = Lava::with_config(
             cols,
             rows,
             LavaConfig {
                 palette,
+                seed,
                 ..LavaConfig::default()
             },
         );
@@ -458,5 +469,18 @@ mod tests {
     fn feed_input_returns_true_on_exit() {
         let mut s = Session::new(40, 20, Palette::Classic);
         assert!(s.feed_input(b"\x03"));
+    }
+
+    #[test]
+    fn with_seed_varies_initial_layout() {
+        let (mut a, mut b, mut c) = (Vec::new(), Vec::new(), Vec::new());
+        Session::with_seed(40, 20, Palette::Classic, 1).render(&mut a);
+        Session::with_seed(40, 20, Palette::Classic, 2).render(&mut b);
+        Session::with_seed(40, 20, Palette::Classic, 1).render(&mut c);
+        assert_ne!(
+            a, b,
+            "different seeds should produce different first frames"
+        );
+        assert_eq!(a, c, "the same seed should reproduce the same first frame");
     }
 }

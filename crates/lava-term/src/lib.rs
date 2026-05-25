@@ -14,7 +14,8 @@ pub use tracker::{ConnSlot, ConnTracker};
 
 use lava_engine::{term, Session};
 use std::future::Future;
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 /// Frame cadence — ~30fps.
@@ -36,6 +37,20 @@ const TIMEOUT_MESSAGE: &[u8] = b"\r\n\x1b[0m*** session timed out ***\r\n";
 /// Clamp a client-reported terminal size into the supported range.
 pub fn clamp_size(cols: u16, rows: u16) -> (u16, u16) {
     (cols.clamp(1, MAX_COLS), rows.clamp(1, MAX_ROWS))
+}
+
+/// A fresh RNG seed for a new session, so each connection starts from a
+/// different blob layout. Gathers native entropy — wall-clock nanos plus a
+/// process-wide counter, so two connections in the same instant still differ —
+/// and runs it through the engine's shared [`lava_engine::seed_from`] mixer.
+pub fn random_seed() -> u64 {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    lava_engine::seed_from(nanos ^ n.wrapping_mul(0x9E37_79B9_7F4A_7C15))
 }
 
 /// Out-of-band events a transport feeds into a running session.

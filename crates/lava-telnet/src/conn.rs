@@ -100,7 +100,12 @@ pub(crate) async fn serve(stream: TcpStream, params: Params) {
 
     let palette = Palette::default();
     info!(peer, palette = palette.name(), "session start");
-    let mut session = Session::new(DEFAULT_COLS, DEFAULT_ROWS, palette);
+    let mut session = Session::with_seed(
+        DEFAULT_COLS,
+        DEFAULT_ROWS,
+        palette,
+        lava_term::random_seed(),
+    );
     session.set_speed(speed);
 
     // The negotiation prelude goes out ahead of the shared alt-screen setup.

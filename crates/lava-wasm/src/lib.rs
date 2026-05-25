@@ -32,6 +32,18 @@
 use lava_engine::Session;
 use wasm_bindgen::prelude::*;
 
+/// A fresh seed for a [`LavaSession`], derived from JS entropy (`Date.now()`
+/// XOR `Math.random()`) through the engine's shared `seed_from` mixer — the
+/// browser/Node counterpart to the native `lava_term::random_seed`. Returned
+/// as a JS-safe 53-bit integer, so it round-trips back into the constructor
+/// without precision loss.
+#[wasm_bindgen(js_name = randomSeed)]
+pub fn random_seed() -> f64 {
+    const TWO_POW_53: f64 = 9_007_199_254_740_992.0;
+    let entropy = (js_sys::Date::now() as u64) ^ ((js_sys::Math::random() * TWO_POW_53) as u64);
+    (lava_engine::seed_from(entropy) & ((1 << 53) - 1)) as f64
+}
+
 #[wasm_bindgen]
 pub struct LavaSession {
     inner: Session,
@@ -46,14 +58,22 @@ impl LavaSession {
     /// match exactly. `palette` is matched via `Palette`'s `FromStr`
     /// (case-insensitive, aliases supported); unknown / `null` falls back
     /// to the default.
+    ///
+    /// `seed` picks the starting blob layout; pass [`random_seed`]'s result
+    /// for a fresh layout each load, or omit it (`null` / `undefined`) for the
+    /// engine's fixed deterministic default.
     #[wasm_bindgen(constructor)]
-    pub fn new(cols: u16, rows: u16, palette: Option<String>) -> Self {
+    pub fn new(cols: u16, rows: u16, palette: Option<String>, seed: Option<f64>) -> Self {
         let palette = palette
             .as_deref()
             .map(Session::palette_from_str)
             .unwrap_or_default();
+        let inner = match seed {
+            Some(s) => Session::with_seed(cols, rows, palette, s as u64),
+            None => Session::new(cols, rows, palette),
+        };
         Self {
-            inner: Session::new(cols, rows, palette),
+            inner,
             buf: Vec::new(),
         }
     }

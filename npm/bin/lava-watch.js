@@ -35,7 +35,7 @@ const rows = process.stdout.rows || 24;
 
 let session;
 try {
-  session = new wasm.LavaSession(cols, rows, arg);
+  session = new wasm.LavaSession(cols, rows, arg, wasm.randomSeed());
 } catch (err) {
   process.stderr.write(`lava-watch: failed to start: ${err?.message || err}\n`);
   process.exit(1);

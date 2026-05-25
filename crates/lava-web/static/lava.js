@@ -12,7 +12,7 @@
 
 // `?v=` query-string hashes are substituted by the server at startup so a
 // new binary build invalidates each asset's client cache (immutable + 1y).
-import init, { LavaSession } from "/static/lava_wasm.js?v=__WASM_JS_HASH__";
+import init, { LavaSession, randomSeed } from "/static/lava_wasm.js?v=__WASM_JS_HASH__";
 
 // RGBA path: internal pixel resolution. Higher = nicer metaballs, more wasm
 // work per frame. The canvas is CSS-stretched to viewport so this is purely
@@ -71,7 +71,7 @@ const BADGE_MS = 3000;
   canvas.height = dims.h;
 
   const palette = window.location.pathname.replace(/^\/+|\/+$/g, "") || null;
-  const session = new LavaSession(dims.w, dims.rows, palette);
+  const session = new LavaSession(dims.w, dims.rows, palette, randomSeed());
   // The web has its own DOM tips; suppress the engine's bottom keybind
   // hints so they don't appear (e.g. in ASCII mode, which calls render()).
   session.toggleHints();
