@@ -132,19 +132,15 @@ impl Parser {
     /// terminal in the telnet state machine, so they can't trigger a loop.
     fn respond(verb: u8, opt: u8, reply: &mut Vec<u8>) {
         match verb {
-            // Peer asks us to enable an option.
-            DO => {
-                if opt != OPT_ECHO && opt != OPT_SGA {
-                    reply.extend_from_slice(&[IAC, WONT, opt]);
-                }
-                // ECHO / SGA we already offered — no reply needed.
+            // Peer asks us to enable an option we don't drive — refuse it.
+            // ECHO / SGA we already offered, so those fall through silently.
+            DO if opt != OPT_ECHO && opt != OPT_SGA => {
+                reply.extend_from_slice(&[IAC, WONT, opt]);
             }
-            // Peer announces it will enable an option.
-            WILL => {
-                if opt != OPT_NAWS {
-                    reply.extend_from_slice(&[IAC, DONT, opt]);
-                }
-                // NAWS we requested — accept silently.
+            // Peer announces it will enable an option we didn't request —
+            // refuse. NAWS we asked for, so that falls through and is accepted.
+            WILL if opt != OPT_NAWS => {
+                reply.extend_from_slice(&[IAC, DONT, opt]);
             }
             // Peer refuses / disables — acknowledge so it stops asking.
             DONT => reply.extend_from_slice(&[IAC, WONT, opt]),
