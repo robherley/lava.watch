@@ -13,7 +13,7 @@ path = "src/lib.rs"
 [dependencies]
 lava-engine = { path = "../lava-engine" }
 lava-term = { path = "../lava-term" }
-russh = "0.60"
+russh = "0.61"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "net", "io-util", "signal"] }
 anyhow = "1"
 tracing = "0.1"
