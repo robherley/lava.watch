@@ -4,13 +4,15 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 5
     groups:
-      patch:
-        update-types: [patch]
-      minor:
-        update-types: [minor]
+      cargo:
+        patterns:
+          - "*"
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns:
+          - "*"
