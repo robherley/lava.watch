@@ -11,6 +11,7 @@ export LAVA_HOST_KEY="${LAVA_HOST_KEY:-$(cat .dev/host_key)}"
 export LAVA_SSH_PORT="${LAVA_SSH_PORT:-2323}"
 export LAVA_TELNET_PORT="${LAVA_TELNET_PORT:-5282}"
 export LAVA_WEB_PORT="${LAVA_WEB_PORT:-8080}"
+export LAVA_FPS=30
 
 echo "lava transports:"
 echo "  ssh -p ${LAVA_SSH_PORT} localhost"

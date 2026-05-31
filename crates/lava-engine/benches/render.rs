@@ -29,7 +29,7 @@ fn bench_tick(c: &mut Criterion) {
 fn bench_term_render(c: &mut Criterion) {
     let mut group = c.benchmark_group("term::render");
     for &(cols, rows) in &[(80u16, 24u16), (120, 40), (200, 50)] {
-        let s = warmed_session(cols, rows);
+        let mut s = warmed_session(cols, rows);
         let mut buf = Vec::with_capacity(cols as usize * rows as usize * 24);
         group.bench_function(format!("{cols}x{rows}"), |b| {
             b.iter(|| {

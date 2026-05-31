@@ -8,7 +8,7 @@
 //! The same byte stream drives a real terminal (over SSH) and xterm.js
 //! in the browser — both speak ANSI.
 
-use crate::palette::pixel_color;
+use crate::palette::{pixel_color, PaletteColors};
 use crate::Lava;
 use std::io::Write;
 
@@ -33,42 +33,107 @@ pub const BEGIN_SYNC: &[u8] = b"\x1b[?2026h";
 /// End synchronized output and flush the buffered frame to the screen.
 pub const END_SYNC: &[u8] = b"\x1b[?2026l";
 
-/// Append a full ANSI frame to `out`. The frame begins with cursor-home
-/// (`ESC[H`) so successive frames overwrite in place — the caller is
-/// responsible for the initial screen clear (see [`ENTER_ALT_SCREEN`]).
-pub fn render(lava: &Lava, out: &mut Vec<u8>) {
-    out.extend_from_slice(b"\x1b[H");
+pub(crate) type Color = (u8, u8, u8);
 
-    let cols = lava.width as usize;
-    let rows = (lava.height / 2) as usize;
+/// A single rendered terminal cell: foreground + background truecolor and the
+/// glyph drawn between them. Colors are pre-[`quantize`]d, so two equal `Cell`s
+/// produce identical bytes — which is what makes both the SGR run-coalescing
+/// and the frame diffing correct.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct Cell {
+    pub fg: Color,
+    pub bg: Color,
+    pub glyph: char,
+}
+
+/// Channel quantization step. A full truecolor gradient changes by a digit or
+/// two nearly every cell, which defeats both run-coalescing and frame diffing;
+/// snapping each channel to a multiple of this (~32 levels) lets neighbours and
+/// successive frames share colors. The lamp's soft gradients hide the banding.
+const COLOR_STEP: u16 = 8;
+
+/// Round each channel of `c` to the nearest [`COLOR_STEP`] multiple.
+pub(crate) fn quantize(c: Color) -> Color {
+    let q = |v: u8| (((v as u16 + COLOR_STEP / 2) / COLOR_STEP) * COLOR_STEP).min(255) as u8;
+    (q(c.0), q(c.1), q(c.2))
+}
+
+/// Sample the half-block cell at terminal position `(col, row)` — fg encodes
+/// the top pixel, bg the bottom, doubling effective vertical resolution.
+/// `quant` snaps the colors to the [`quantize`] grid (bandwidth) when set.
+pub(crate) fn cell(lava: &Lava, pal: &PaletteColors, col: usize, row: usize, quant: bool) -> Cell {
     let h = lava.height as f32;
-    let pal = lava.palette.colors();
+    let xt = col as f32 + 0.5;
+    let yt = (row * 2) as f32 + 0.5;
+    let yb = (row * 2 + 1) as f32 + 0.5;
+    let (ft, ht) = lava.sample(xt, yt);
+    let (fb, hb) = lava.sample(xt, yb);
+    let top = pixel_color(pal, ft, ht, yt / h, lava.inverted);
+    let bot = pixel_color(pal, fb, hb, yb / h, lava.inverted);
+    let (top, bot) = if quant {
+        (quantize(top), quantize(bot))
+    } else {
+        (top, bot)
+    };
+    Cell {
+        fg: top,
+        bg: bot,
+        glyph: '▀',
+    }
+}
 
-    let mut last_fg: Option<(u8, u8, u8)> = None;
-    let mut last_bg: Option<(u8, u8, u8)> = None;
+/// Emit one cell's color escapes — coalesced against the last colors emitted
+/// in this frame — followed by its glyph.
+fn emit_cell(
+    cell: &Cell,
+    last_fg: &mut Option<Color>,
+    last_bg: &mut Option<Color>,
+    out: &mut Vec<u8>,
+) {
+    if *last_fg != Some(cell.fg) {
+        let _ = write!(out, "\x1b[38;2;{};{};{}m", cell.fg.0, cell.fg.1, cell.fg.2);
+        *last_fg = Some(cell.fg);
+    }
+    if *last_bg != Some(cell.bg) {
+        let _ = write!(out, "\x1b[48;2;{};{};{}m", cell.bg.0, cell.bg.1, cell.bg.2);
+        *last_bg = Some(cell.bg);
+    }
+    let mut b = [0u8; 4];
+    out.extend_from_slice(cell.glyph.encode_utf8(&mut b).as_bytes());
+}
 
+/// Append a full ANSI frame to `out`: cursor-home (`ESC[H`), then every cell in
+/// row order, so successive frames overwrite in place (the caller does the
+/// initial clear — see [`ENTER_ALT_SCREEN`]). If `prev` is given it's filled
+/// with this frame's cells, priming [`render_delta`]. `sample` yields the cell
+/// at `(col, row)`.
+pub(crate) fn render_full<F>(
+    cols: usize,
+    rows: usize,
+    sample: F,
+    mut prev: Option<&mut Vec<Cell>>,
+    out: &mut Vec<u8>,
+) where
+    F: Fn(usize, usize) -> Cell,
+{
+    out.extend_from_slice(b"\x1b[H");
+    if let Some(p) = prev.as_deref_mut() {
+        p.clear();
+        p.reserve(cols * rows);
+    }
+
+    let mut last_fg: Option<Color> = None;
+    let mut last_bg: Option<Color> = None;
     for r in 0..rows {
         for c in 0..cols {
-            let xt = c as f32 + 0.5;
-            let yt = (r * 2) as f32 + 0.5;
-            let yb = (r * 2 + 1) as f32 + 0.5;
-            let (ft, ht) = lava.sample(xt, yt);
-            let (fb, hb) = lava.sample(xt, yb);
-            let top = pixel_color(&pal, ft, ht, yt / h, lava.inverted);
-            let bot = pixel_color(&pal, fb, hb, yb / h, lava.inverted);
-
-            if last_fg != Some(top) {
-                let _ = write!(out, "\x1b[38;2;{};{};{}m", top.0, top.1, top.2);
-                last_fg = Some(top);
+            let cell = sample(c, r);
+            emit_cell(&cell, &mut last_fg, &mut last_bg, out);
+            if let Some(p) = prev.as_deref_mut() {
+                p.push(cell);
             }
-            if last_bg != Some(bot) {
-                let _ = write!(out, "\x1b[48;2;{};{};{}m", bot.0, bot.1, bot.2);
-                last_bg = Some(bot);
-            }
-            out.extend_from_slice("▀".as_bytes());
         }
-        // Reset attributes at end of line so any trailing terminal width
-        // beyond our render doesn't inherit our bg color.
+        // Reset at end of line so trailing terminal width beyond our render
+        // doesn't inherit our bg color.
         out.extend_from_slice(b"\x1b[0m");
         if r + 1 < rows {
             out.extend_from_slice(b"\r\n");
@@ -76,6 +141,54 @@ pub fn render(lava: &Lava, out: &mut Vec<u8>) {
         last_fg = None;
         last_bg = None;
     }
+}
+
+/// Append only the cells that changed since `prev` (sized `cols * rows`,
+/// updated in place). Each changed run is cursor-addressed once; unchanged
+/// cells are skipped. The alt-screen persists between frames, so untouched
+/// cells stay as they were — the caller must prime `prev` with [`render_full`]
+/// first (and re-prime after anything that rewrites the whole screen).
+pub(crate) fn render_delta<F>(
+    cols: usize,
+    rows: usize,
+    sample: F,
+    prev: &mut [Cell],
+    out: &mut Vec<u8>,
+) where
+    F: Fn(usize, usize) -> Cell,
+{
+    let mut last_fg: Option<Color> = None;
+    let mut last_bg: Option<Color> = None;
+    // Where the cursor sits (where the next write would land), if known.
+    let mut pen: Option<(usize, usize)> = None;
+    for r in 0..rows {
+        for c in 0..cols {
+            let idx = r * cols + c;
+            let cell = sample(c, r);
+            if prev[idx] == cell {
+                continue;
+            }
+            prev[idx] = cell;
+            if pen != Some((r, c)) {
+                let _ = write!(out, "\x1b[{};{}H", r + 1, c + 1);
+            }
+            emit_cell(&cell, &mut last_fg, &mut last_bg, out);
+            // The glyph advanced the cursor one column.
+            pen = Some((r, c + 1));
+        }
+    }
+}
+
+/// Append a full ANSI frame for `lava` (half-block). Convenience for non-delta
+/// callers — the browser/wasm path and tests; streaming transports drive
+/// [`render_full`] / [`render_delta`] with [`cell`] via `Session`.
+pub fn render(lava: &Lava, out: &mut Vec<u8>) {
+    let pal = lava.palette.colors();
+    let cols = lava.width as usize;
+    let rows = (lava.height / 2) as usize;
+    // Full-quality (no quantization) — this convenience path serves the
+    // browser/wasm and tests, not the bandwidth-sensitive transports.
+    render_full(cols, rows, |c, r| cell(lava, &pal, c, r, false), None, out);
 }
 
 #[cfg(test)]

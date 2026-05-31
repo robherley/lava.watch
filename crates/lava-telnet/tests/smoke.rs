@@ -42,6 +42,8 @@ async fn streams_frames_and_quits() {
         max_conn_time: Duration::from_secs(5),
         max_per_ip: 3,
         speed: 0.8,
+        frame_period: Duration::from_millis(33),
+        quantize: true,
     }));
 
     let mut stream = connect(port).await;
@@ -88,6 +90,8 @@ async fn enforces_per_ip_limit() {
         max_conn_time: Duration::from_secs(5),
         max_per_ip: 1,
         speed: 0.8,
+        frame_period: Duration::from_millis(33),
+        quantize: true,
     }));
 
     // First connection takes the only slot for this IP.

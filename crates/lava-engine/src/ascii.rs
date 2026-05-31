@@ -8,60 +8,47 @@
 //! background = the palette's bg gradient at the same y, so the lamp's
 //! vertical falloff stays visible behind the texture.
 
-use crate::palette::pixel_color;
+use crate::palette::{pixel_color, PaletteColors};
+use crate::term::{quantize, render_full, Cell};
 use crate::Lava;
-use std::io::Write;
 
 /// Light-to-dense ramp keyed off field intensity. Index 0 = empty space,
 /// index 9 = densest part of a blob.
 const RAMP: &[u8; 10] = b" .:-=+*#%@";
 
-/// Append a full ANSI-ASCII frame to `out`. Begins with cursor-home so
-/// successive frames overwrite in place — caller handles initial alt-screen
-/// entry (see [`crate::term::ENTER_ALT_SCREEN`]).
-pub fn render(lava: &Lava, out: &mut Vec<u8>) {
-    out.extend_from_slice(b"\x1b[H");
+/// Sample the ASCII cell at terminal position `(col, row)` — one sample per
+/// cell: fg = the lava color, bg = the bg gradient at this `y` (so the lamp's
+/// vertical falloff stays visible behind the texture), glyph = the ramp char.
+pub(crate) fn cell(lava: &Lava, pal: &PaletteColors, col: usize, row: usize, quant: bool) -> Cell {
+    let h = lava.height as f32;
+    let xt = col as f32 + 0.5;
+    // Sample at the center of the row's two-pixel band so the cell represents
+    // both halves equally.
+    let yt = (row * 2) as f32 + 1.0;
+    let (field, heat) = lava.sample(xt, yt);
+    let fg = pixel_color(pal, field, heat, yt / h, lava.inverted);
+    let bg = pixel_color(pal, 0.0, 0.0, yt / h, lava.inverted);
+    let (fg, bg) = if quant {
+        (quantize(fg), quantize(bg))
+    } else {
+        (fg, bg)
+    };
+    Cell {
+        fg,
+        bg,
+        glyph: ramp_char(field) as char,
+    }
+}
 
+/// Append a full ANSI-ASCII frame for `lava`. Convenience for non-delta callers
+/// (browser/wasm, tests); streaming transports drive [`render_full`] /
+/// [`crate::term::render_delta`] with [`cell`] via `Session`.
+pub fn render(lava: &Lava, out: &mut Vec<u8>) {
+    let pal = lava.palette.colors();
     let cols = lava.width as usize;
     let rows = (lava.height / 2) as usize;
-    let h = lava.height as f32;
-    let pal = lava.palette.colors();
-
-    let mut last_fg: Option<(u8, u8, u8)> = None;
-    let mut last_bg: Option<(u8, u8, u8)> = None;
-
-    for r in 0..rows {
-        for c in 0..cols {
-            let xt = c as f32 + 0.5;
-            // Sample at the center of the row's two-pixel band so the
-            // cell represents both halves equally.
-            let yt = (r * 2) as f32 + 1.0;
-            let (field, heat) = lava.sample(xt, yt);
-
-            let fg = pixel_color(&pal, field, heat, yt / h, lava.inverted);
-            // bg = the bg gradient at this y, regardless of local field —
-            // keeps the lamp's vertical color falloff visible behind the
-            // ASCII texture instead of letting the terminal default show.
-            let bg = pixel_color(&pal, 0.0, 0.0, yt / h, lava.inverted);
-            let ch = ramp_char(field);
-
-            if last_fg != Some(fg) {
-                let _ = write!(out, "\x1b[38;2;{};{};{}m", fg.0, fg.1, fg.2);
-                last_fg = Some(fg);
-            }
-            if last_bg != Some(bg) {
-                let _ = write!(out, "\x1b[48;2;{};{};{}m", bg.0, bg.1, bg.2);
-                last_bg = Some(bg);
-            }
-            out.push(ch);
-        }
-        out.extend_from_slice(b"\x1b[0m");
-        if r + 1 < rows {
-            out.extend_from_slice(b"\r\n");
-        }
-        last_fg = None;
-        last_bg = None;
-    }
+    // Full-quality (no quantization) — browser/wasm and tests, not transports.
+    render_full(cols, rows, |c, r| cell(lava, &pal, c, r, false), None, out);
 }
 
 /// Map field intensity to a ramp character. `field` is roughly:

@@ -7,6 +7,7 @@
 //! - call [`Session::tick`] on a timer (typically 30fps)
 //! - call [`Session::render`] to produce the next ANSI frame to send back
 
+use crate::term::Cell;
 use crate::{ascii, term, Config as LavaConfig, Lava, Palette};
 
 /// Which renderer [`Session::render`] dispatches to.
@@ -93,6 +94,16 @@ fn parse_mouse_press(data: &[u8]) -> Option<(u16, u16)> {
     Some((col, row))
 }
 
+/// Delta-rendering memory: the previous frame's cells, so [`Session::render`]
+/// can emit only what changed. Present only when [`Session::enable_delta`] was
+/// called (streaming transports do; the browser/wasm path renders full
+/// frames). An empty `prev` means "re-prime with a full frame next".
+struct Delta {
+    prev: Vec<Cell>,
+    cols: u16,
+    rows: u16,
+}
+
 /// Owns the [`Lava`] simulation plus a small amount of UI state (current
 /// palette index, overlay countdown).
 pub struct Session {
@@ -101,6 +112,11 @@ pub struct Session {
     overlay_frames: u32,
     mode: RenderMode,
     show_hints: bool,
+    delta: Option<Delta>,
+    /// Snap rendered colors to a coarse grid so gradients coalesce and frames
+    /// diff better (bandwidth, terminal transports). Off by default — full
+    /// quality for the browser/library path.
+    quantize: bool,
 }
 
 impl Session {
@@ -131,6 +147,8 @@ impl Session {
             overlay_frames: 0,
             mode: RenderMode::HalfBlock,
             show_hints: true,
+            delta: None,
+            quantize: false,
         }
     }
 
@@ -162,6 +180,11 @@ impl Session {
         self.lava.step(dt);
         if self.overlay_frames > 0 {
             self.overlay_frames -= 1;
+            // The badge just vanished — force a full repaint so delta
+            // rendering clears the cells it had covered.
+            if self.overlay_frames == 0 {
+                self.invalidate_delta();
+            }
         }
     }
 
@@ -174,12 +197,9 @@ impl Session {
     /// The frame is wrapped in DEC 2026 synchronized-output begin/end
     /// markers ([`term::BEGIN_SYNC`] / [`term::END_SYNC`]) so terminals that
     /// support it flip the screen atomically — no tearing on slow links.
-    pub fn render(&self, out: &mut Vec<u8>) {
+    pub fn render(&mut self, out: &mut Vec<u8>) {
         out.extend_from_slice(term::BEGIN_SYNC);
-        match self.mode {
-            RenderMode::HalfBlock => term::render(&self.lava, out),
-            RenderMode::Ascii => ascii::render(&self.lava, out),
-        }
+        self.render_body(out);
         if self.show_hints {
             self.render_hints(out);
         }
@@ -207,6 +227,103 @@ impl Session {
             out.extend_from_slice(overlay.as_bytes());
         }
         out.extend_from_slice(term::END_SYNC);
+    }
+
+    /// Render the lava body — the big per-cell repaint. Full-frame unless delta
+    /// rendering is enabled ([`Session::enable_delta`]) and already primed, in
+    /// which case only changed cells are emitted. Half-block vs ASCII picks the
+    /// per-cell sampler.
+    fn render_body(&mut self, out: &mut Vec<u8>) {
+        let lava = &self.lava;
+        let pal = lava.palette.colors();
+        let cols = lava.width as usize;
+        let rows = (lava.height / 2) as usize;
+        let ascii = self.mode == RenderMode::Ascii;
+        let quant = self.quantize;
+
+        // Decide full vs delta (and grab the prev buffer) before rendering, so
+        // the per-mode sampler dispatch below stays a simple 2×2 match.
+        enum Plan<'a> {
+            /// Full repaint; `Some` re-primes the delta buffer with this frame.
+            Full(Option<&'a mut Vec<Cell>>),
+            /// Emit only cells that differ from the (already primed) buffer.
+            Delta(&'a mut Vec<Cell>),
+        }
+        let plan = match &mut self.delta {
+            None => Plan::Full(None),
+            Some(d) if d.prev.is_empty() || d.cols as usize != cols || d.rows as usize != rows => {
+                d.cols = cols as u16;
+                d.rows = rows as u16;
+                Plan::Full(Some(&mut d.prev))
+            }
+            Some(d) => Plan::Delta(&mut d.prev),
+        };
+
+        match (plan, ascii) {
+            (Plan::Full(prev), false) => term::render_full(
+                cols,
+                rows,
+                |c, r| term::cell(lava, &pal, c, r, quant),
+                prev,
+                out,
+            ),
+            (Plan::Full(prev), true) => term::render_full(
+                cols,
+                rows,
+                |c, r| ascii::cell(lava, &pal, c, r, quant),
+                prev,
+                out,
+            ),
+            (Plan::Delta(prev), false) => term::render_delta(
+                cols,
+                rows,
+                |c, r| term::cell(lava, &pal, c, r, quant),
+                prev,
+                out,
+            ),
+            (Plan::Delta(prev), true) => term::render_delta(
+                cols,
+                rows,
+                |c, r| ascii::cell(lava, &pal, c, r, quant),
+                prev,
+                out,
+            ),
+        }
+    }
+
+    /// Enable delta rendering: subsequent [`render`](Self::render) calls emit
+    /// only the cells that changed since the previous frame. For streaming
+    /// transports (SSH/telnet) where a full repaint every frame is wasteful;
+    /// leave it off for full-frame consumers like the browser canvas.
+    pub fn enable_delta(&mut self) {
+        if self.delta.is_none() {
+            self.delta = Some(Delta {
+                prev: Vec::new(),
+                cols: 0,
+                rows: 0,
+            });
+        }
+    }
+
+    /// Enable/disable color quantization — snapping rendered colors to a coarse
+    /// grid so gradients coalesce into runs and successive frames diff better.
+    /// On for the bandwidth-sensitive terminal transports, off for full-quality
+    /// consumers (the browser). Forces a full repaint so a mid-session change
+    /// takes effect cleanly under delta rendering.
+    pub fn set_quantize(&mut self, quantize: bool) {
+        if self.quantize != quantize {
+            self.quantize = quantize;
+            self.invalidate_delta();
+        }
+    }
+
+    /// Force the next frame to be a full repaint — called after any change that
+    /// rewrites the whole screen (resize, palette/invert/mode switch, the
+    /// hint strip or badge appearing/disappearing). No-op when delta is off.
+    fn invalidate_delta(&mut self) {
+        if let Some(d) = &mut self.delta {
+            d.prev.clear();
+        }
     }
 
     /// Bottom-row keybind hints — left-aligned, palette `hint` fg on `bg`,
@@ -282,6 +399,7 @@ impl Session {
 
     pub fn resize(&mut self, cols: u16, rows: u16) {
         self.lava.resize(cols, rows);
+        self.invalidate_delta();
     }
 
     /// Override the simulation speed multiplier. `1.0` is the engine's
@@ -294,17 +412,20 @@ impl Session {
         self.palette_idx = (self.palette_idx + 1) % Palette::ALL.len();
         self.lava.palette = Palette::ALL[self.palette_idx];
         self.overlay_frames = OVERLAY_FRAMES;
+        self.invalidate_delta();
     }
 
     pub fn cycle_prev(&mut self) {
         self.palette_idx = (self.palette_idx + Palette::ALL.len() - 1) % Palette::ALL.len();
         self.lava.palette = Palette::ALL[self.palette_idx];
         self.overlay_frames = OVERLAY_FRAMES;
+        self.invalidate_delta();
     }
 
     /// Flip the photographic-negative render flag.
     pub fn toggle_inverted(&mut self) {
         self.lava.inverted = !self.lava.inverted;
+        self.invalidate_delta();
     }
 
     pub fn is_inverted(&self) -> bool {
@@ -317,6 +438,7 @@ impl Session {
 
     pub fn set_render_mode(&mut self, mode: RenderMode) {
         self.mode = mode;
+        self.invalidate_delta();
     }
 
     /// Flip between half-block and ASCII renderers.
@@ -325,11 +447,14 @@ impl Session {
             RenderMode::HalfBlock => RenderMode::Ascii,
             RenderMode::Ascii => RenderMode::HalfBlock,
         };
+        self.invalidate_delta();
     }
 
     /// Show / hide the bottom keybind hint strip.
     pub fn toggle_hints(&mut self) {
         self.show_hints = !self.show_hints;
+        // The strip's row(s) flip between hint text and lava body — repaint.
+        self.invalidate_delta();
     }
 
     pub fn hints_visible(&self) -> bool {
@@ -482,5 +607,52 @@ mod tests {
             "different seeds should produce different first frames"
         );
         assert_eq!(a, c, "the same seed should reproduce the same first frame");
+    }
+
+    #[test]
+    fn delta_frame_is_smaller_than_full_repaint() {
+        let mut s = Session::with_seed(80, 24, Palette::Classic, 1);
+        s.enable_delta();
+        s.set_quantize(true);
+        // First frame after enabling re-primes with a full repaint.
+        let mut full = Vec::new();
+        s.tick(1.0 / 15.0);
+        s.render(&mut full);
+        // Next frame emits only the cells that changed — far fewer bytes for
+        // slowly-moving, color-quantized lava.
+        let mut delta = Vec::new();
+        s.tick(1.0 / 15.0);
+        s.render(&mut delta);
+        assert!(
+            delta.len() < full.len(),
+            "delta frame ({}) should be smaller than full repaint ({})",
+            delta.len(),
+            full.len()
+        );
+    }
+
+    #[test]
+    fn palette_cycle_forces_full_repaint_in_delta_mode() {
+        let mut s = Session::with_seed(80, 24, Palette::Classic, 1);
+        s.enable_delta();
+        s.set_quantize(true);
+        let mut buf = Vec::new();
+        s.tick(1.0 / 15.0);
+        s.render(&mut buf); // prime
+        s.tick(1.0 / 15.0);
+        buf.clear();
+        s.render(&mut buf); // small delta
+        let delta_len = buf.len();
+        // Cycling recolors everything → next frame must be a full repaint.
+        s.cycle_next();
+        s.tick(1.0 / 15.0);
+        buf.clear();
+        s.render(&mut buf);
+        assert!(
+            buf.len() > delta_len,
+            "post-cycle frame ({}) should be a full repaint, not a small delta ({})",
+            buf.len(),
+            delta_len
+        );
     }
 }

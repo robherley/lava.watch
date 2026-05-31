@@ -43,6 +43,8 @@ pub(crate) struct LavaParams {
     pub cols: u16,
     pub rows: u16,
     pub max_time: Duration,
+    pub frame_period: Duration,
+    pub quantize: bool,
     pub speed: f32,
 }
 
@@ -87,6 +89,8 @@ pub(crate) async fn serve_lava(
         cols,
         rows,
         max_time,
+        frame_period,
+        quantize,
         speed,
     } = params;
     let peer = peer.map(|p| p.to_string()).unwrap_or_default();
@@ -96,7 +100,8 @@ pub(crate) async fn serve_lava(
     session.set_speed(speed);
 
     let sink = SshSink { handle, channel };
-    let reason = lava_term::run_session(sink, session, msg_rx, max_time, &[]).await;
+    let reason =
+        lava_term::run_session(sink, session, msg_rx, frame_period, max_time, quantize, &[]).await;
 
     info!(
         peer,

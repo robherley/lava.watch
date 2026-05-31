@@ -18,12 +18,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
-/// Frame cadence — ~30fps.
-pub const FRAME_PERIOD: Duration = Duration::from_millis(33);
-/// Upper bounds on a client-reported terminal size. Generous, but bounded so a
-/// hostile or buggy client can't make us allocate enormous frame buffers.
-pub const MAX_COLS: u16 = 512;
-pub const MAX_ROWS: u16 = 256;
+/// Upper bounds on a client-reported terminal size. Bounded fairly tightly:
+/// every frame is (at most) a full repaint of `cols × rows` cells, so an
+/// oversized terminal is the dominant driver of per-connection bandwidth.
+/// Larger terminals render at this cap (the lamp letterboxes) rather than
+/// ballooning the byte stream.
+pub const MAX_COLS: u16 = 200;
+pub const MAX_ROWS: u16 = 60;
 /// Cap on a single frame's wall-clock delta, so a long pause (suspend,
 /// debugger, a slow network tick) can't lurch the simulation forward by
 /// seconds on catch-up.
@@ -97,21 +98,29 @@ pub trait FrameSink {
 }
 
 /// Drive a session to completion: write the terminal-setup prelude, then loop
-/// — render a frame every [`FRAME_PERIOD`], apply inbound [`SessionMsg`]s, and
+/// — render a frame every `frame_period`, apply inbound [`SessionMsg`]s, and
 /// stop on client exit, disconnect, or `max_time`. Restores the client's
 /// screen and shuts the sink down on the way out.
 ///
-/// The caller owns connection setup outside the loop (slot acquisition, input
-/// plumbing, logging) and the [`Session`]'s initial size/palette/speed.
-/// `prelude` is transport-specific bytes to emit before the shared alt-screen
-/// + mouse-enable setup (telnet negotiation; empty for SSH).
+/// Delta rendering is enabled here (only changed cells are sent each frame),
+/// and color quantization is set from `quantize` — this is the
+/// bandwidth-sensitive streaming path. The caller owns connection setup
+/// outside the loop (slot acquisition, input plumbing, logging) and the
+/// [`Session`]'s initial size/palette/speed. `prelude` is transport-specific
+/// bytes to emit before the shared alt-screen + mouse-enable setup (telnet
+/// negotiation; empty for SSH).
 pub async fn run_session<S: FrameSink>(
     mut sink: S,
     mut session: Session,
     mut msgs: mpsc::Receiver<SessionMsg>,
+    frame_period: Duration,
     max_time: Duration,
+    quantize: bool,
     prelude: &[u8],
 ) -> EndReason {
+    session.enable_delta();
+    session.set_quantize(quantize);
+
     // Enter the alt-screen and enable mouse reporting, prefixed by whatever the
     // transport needs to send first.
     let mut intro = Vec::with_capacity(prelude.len() + 32);
@@ -124,7 +133,7 @@ pub async fn run_session<S: FrameSink>(
 
     let (cols, rows) = session.dimensions();
     let mut buf: Vec<u8> = Vec::with_capacity(cols as usize * rows as usize * 24);
-    let mut interval = tokio::time::interval(FRAME_PERIOD);
+    let mut interval = tokio::time::interval(frame_period);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     let deadline = tokio::time::sleep(max_time);
