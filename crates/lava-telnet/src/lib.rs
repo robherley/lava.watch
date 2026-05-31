@@ -27,6 +27,10 @@ pub struct Config {
     pub max_per_ip: usize,
     /// Simulation speed multiplier passed to each [`lava_engine::Session`].
     pub speed: f32,
+    /// Interval between rendered frames — see `lava_ssh::Config::frame_period`.
+    pub frame_period: Duration,
+    /// Quantize rendered colors — see `lava_ssh::Config::quantize`.
+    pub quantize: bool,
 }
 
 /// Run the telnet server until the listener stops accepting (typically never).
@@ -69,6 +73,8 @@ pub async fn run(cfg: Config) -> Result<()> {
             conn::Params {
                 peer,
                 max_time: cfg.max_conn_time,
+                frame_period: cfg.frame_period,
+                quantize: cfg.quantize,
                 speed: cfg.speed,
                 slot,
             },

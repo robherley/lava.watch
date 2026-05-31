@@ -23,6 +23,8 @@ const READ_BUF: usize = 1024;
 pub(crate) struct Params {
     pub peer: SocketAddr,
     pub max_time: Duration,
+    pub frame_period: Duration,
+    pub quantize: bool,
     pub speed: f32,
     /// Held for the connection's lifetime; releases the per-IP slot on drop.
     pub slot: ConnSlot,
@@ -47,6 +49,8 @@ pub(crate) async fn serve(stream: TcpStream, params: Params) {
     let Params {
         peer,
         max_time,
+        frame_period,
+        quantize,
         speed,
         // Bound (not `_`) so the slot lives for the whole session and releases
         // on return.
@@ -110,7 +114,16 @@ pub(crate) async fn serve(stream: TcpStream, params: Params) {
 
     // The negotiation prelude goes out ahead of the shared alt-screen setup.
     let sink = TcpSink { write_half };
-    let reason = lava_term::run_session(sink, session, rx, max_time, INITIAL_NEGOTIATION).await;
+    let reason = lava_term::run_session(
+        sink,
+        session,
+        rx,
+        frame_period,
+        max_time,
+        quantize,
+        INITIAL_NEGOTIATION,
+    )
+    .await;
 
     // `run_session` shut the socket down; just stop the reader.
     reader.abort();

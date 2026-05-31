@@ -23,6 +23,20 @@ fn parse_env<T: std::str::FromStr>(key: &str) -> Option<T> {
     std::env::var(key).ok().and_then(|s| s.parse().ok())
 }
 
+/// Frame interval shared by both terminal transports. `LAVA_FPS` trades
+/// bandwidth for smoothness; 15 is plenty for the slow lava motion and ~halves
+/// the byte rate vs 30. Clamped to a sane range.
+fn frame_period() -> Duration {
+    let fps = parse_env::<u32>("LAVA_FPS").unwrap_or(15).clamp(1, 60);
+    Duration::from_micros(1_000_000 / fps as u64)
+}
+
+/// Color quantization, shared by both terminal transports. On by default
+/// (bandwidth); set `LAVA_QUANTIZE=0`/`false` to send full truecolor.
+fn quantize() -> bool {
+    parse_env::<bool>("LAVA_QUANTIZE").unwrap_or(true)
+}
+
 fn ssh_config() -> lava_ssh::Config {
     lava_ssh::Config {
         // `LAVA_PORT` is the old name — still honored as a fallback.
@@ -34,6 +48,8 @@ fn ssh_config() -> lava_ssh::Config {
         max_conn_time: Duration::from_secs(parse_env::<u64>("LAVA_MAX_CONN_TIME").unwrap_or(300)),
         max_per_ip: parse_env::<usize>("LAVA_MAX_PER_IP").unwrap_or(3),
         speed: parse_env::<f32>("LAVA_SPEED").unwrap_or(0.8),
+        frame_period: frame_period(),
+        quantize: quantize(),
     }
 }
 
@@ -45,6 +61,8 @@ fn telnet_config() -> lava_telnet::Config {
         max_conn_time: Duration::from_secs(parse_env::<u64>("LAVA_MAX_CONN_TIME").unwrap_or(300)),
         max_per_ip: parse_env::<usize>("LAVA_MAX_PER_IP").unwrap_or(3),
         speed: parse_env::<f32>("LAVA_SPEED").unwrap_or(0.8),
+        frame_period: frame_period(),
+        quantize: quantize(),
     }
 }
 

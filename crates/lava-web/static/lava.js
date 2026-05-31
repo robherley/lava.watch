@@ -12,7 +12,10 @@
 
 // `?v=` query-string hashes are substituted by the server at startup so a
 // new binary build invalidates each asset's client cache (immutable + 1y).
-import init, { LavaSession, randomSeed } from "/static/lava_wasm.js?v=__WASM_JS_HASH__";
+import init, {
+  LavaSession,
+  randomSeed,
+} from "/static/lava_wasm.js?v=__WASM_JS_HASH__";
 
 // RGBA path: internal pixel resolution. Higher = nicer metaballs, more wasm
 // work per frame. The canvas is CSS-stretched to viewport so this is purely

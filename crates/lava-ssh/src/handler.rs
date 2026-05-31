@@ -283,6 +283,8 @@ impl LavaHandler {
             cols,
             rows,
             max_time,
+            frame_period: self.config.frame_period,
+            quantize: self.config.quantize,
             speed: self.config.speed,
         };
         tokio::spawn(serve_lava(params, handle, rx));

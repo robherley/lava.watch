@@ -38,6 +38,12 @@ pub struct Config {
     pub max_per_ip: usize,
     /// Simulation speed multiplier passed to each [`lava_engine::Session`].
     pub speed: f32,
+    /// Interval between rendered frames. Lower frame rates cut per-connection
+    /// bandwidth roughly linearly; the sim still advances by wall-clock time.
+    pub frame_period: Duration,
+    /// Quantize rendered colors (coarser palette) to shrink frames. Trades a
+    /// little banding for bandwidth.
+    pub quantize: bool,
 }
 
 /// Run the SSH server until it stops accepting connections (typically never).
