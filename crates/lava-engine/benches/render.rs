@@ -7,8 +7,9 @@
 //! - `pixels::render` at canvas-typical pixel grids — twice the samples per
 //!   cell area than the half-block term path.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use lava_engine::{Palette, Session};
+use std::hint::black_box;
 
 fn warmed_session(cols: u16, rows: u16) -> Session {
     let mut s = Session::new(cols, rows, Palette::Classic);
