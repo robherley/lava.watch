@@ -92,8 +92,8 @@ All env vars; every transport reads what it needs from the same environment.
 | `LAVA_MAX_CONN_TIME`    | u64    | `300`            | ssh, telnet  | Hard session timeout, in seconds                                           |
 | `LAVA_MAX_PER_IP`       | usize  | `3`              | ssh, telnet  | Concurrent connections per IP (each transport counts separately)           |
 | `LAVA_SPEED`            | f32    | `0.8`            | ssh, telnet  | Simulation speed multiplier (`1.0` = engine "natural" rate, lower = slower) |
-| `LAVA_FPS`              | u32    | `15`             | ssh, telnet  | Frames sent per second (1–60). Lower ≈ linearly less bandwidth; motion is unaffected (wall-clock `dt`) |
-| `LAVA_QUANTIZE`         | bool   | `true`           | ssh, telnet  | Snap colors to a coarse grid to shrink frames. `false` sends full truecolor (more bandwidth, no banding) |
+| `LAVA_FPS`              | u32    | `24`             | ssh, telnet  | Frames sent per second (1–60). Lower ≈ linearly less bandwidth; motion is unaffected (wall-clock `dt`) |
+| `LAVA_QUANTIZE`         | bool   | `false`          | ssh, telnet  | Snap colors to a coarse grid to shrink frames. Off by default — full truecolor (more bandwidth, no banding) |
 | `LAVA_WEB_PORT`         | u16    | `8080`           | web          | HTTP listen port                                                           |
 | `RUST_LOG`              | string | `lava=info,…`    | all          | tracing-subscriber filter                                                  |
 
@@ -140,9 +140,9 @@ adapts its byte channel (an SSH channel handle, a TCP socket) into a
 the per-IP connection tracker, and the timing/size constants.
 
 Streaming a full truecolor repaint every frame is expensive, so the terminal
-path trims bandwidth four ways: a configurable, lowered frame rate
-(`LAVA_FPS`); **color quantization** (channels snap to ~32 levels so gradients
-coalesce into runs); **delta rendering** (only cells that changed since the
+path trims bandwidth four ways: a configurable frame rate
+(`LAVA_FPS`); opt-in **color quantization** (channels snap to ~32 levels so
+gradients coalesce into runs); **delta rendering** (only cells that changed since the
 last frame are re-sent, cursor-addressed in place); and a tight **max render
 size** so an oversized terminal can't blow up the byte stream. These apply
 only to the ANSI transports — the browser renders RGBA client-side and is

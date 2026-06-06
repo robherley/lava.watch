@@ -4,10 +4,12 @@ A lava lamp in your terminal — the engine behind [ssh lava.watch][repo],
 compiled to WebAssembly and run locally.
 
 ```sh
-npx lava-watch          # default palette
-npx lava-watch uv       # ultraviolet
-npx lava-watch --ascii  # start in ASCII mode
-npx lava-watch --help   # help text
+npx lava-watch             # default palette
+npx lava-watch uv          # ultraviolet
+npx lava-watch --ascii     # start in ASCII mode
+npx lava-watch --fps 30    # frame rate (default 24, 1–60)
+npx lava-watch --quantize  # coarser colors, smaller frames
+npx lava-watch --help      # help text
 ```
 
 In session: `←` / `→` cycle palettes, `i` inverts colors, `a` toggles the

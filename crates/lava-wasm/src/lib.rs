@@ -124,6 +124,13 @@ impl LavaSession {
         self.inner.cycle_prev();
     }
 
+    /// Snap rendered colors to a coarse grid so gradients coalesce and
+    /// frames diff better (bandwidth). Off by default — full truecolor.
+    #[wasm_bindgen(js_name = setQuantize)]
+    pub fn set_quantize(&mut self, quantize: bool) {
+        self.inner.set_quantize(quantize);
+    }
+
     #[wasm_bindgen(js_name = toggleInverted)]
     pub fn toggle_inverted(&mut self) {
         self.inner.toggle_inverted();

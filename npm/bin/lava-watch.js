@@ -7,11 +7,30 @@ const LEAVE_ALT = "\x1b[?25h\x1b[?1049l";
 const MOUSE_ON = "\x1b[?1000h\x1b[?1006h";
 const MOUSE_OFF = "\x1b[?1006l\x1b[?1000l";
 
-// Crude argv split: any `--ascii` flag toggles ASCII mode at startup; the
-// remaining positional (if any) is the palette name.
+// Crude argv split: `--ascii` toggles ASCII mode at startup, `--quantize`
+// snaps colors to a coarse grid (off by default — full truecolor), and
+// `--fps=N` / `--fps N` sets the frame rate (default 24, clamped 1–60).
+// The remaining positional (if any) is the palette name.
 const argv = process.argv.slice(2);
 const asciiFlag = argv.includes("--ascii");
-const positional = argv.filter((a) => !a.startsWith("-"));
+const quantizeFlag = argv.includes("--quantize");
+
+let fps = 24;
+const consumed = new Set();
+const fpsEq = argv.find((a) => a.startsWith("--fps="));
+if (fpsEq) {
+  fps = Number(fpsEq.slice("--fps=".length));
+} else {
+  const i = argv.indexOf("--fps");
+  if (i !== -1) {
+    fps = Number(argv[i + 1]);
+    consumed.add(i + 1);
+  }
+}
+if (!Number.isFinite(fps)) fps = 24;
+fps = Math.min(Math.max(Math.round(fps), 1), 60);
+
+const positional = argv.filter((a, i) => !a.startsWith("-") && !consumed.has(i));
 const arg = positional[0];
 
 if (argv.includes("--help") || argv.includes("-h")) {
@@ -42,6 +61,7 @@ try {
 }
 
 if (asciiFlag) session.toggleAscii();
+if (quantizeFlag) session.setQuantize(true);
 
 let exiting = false;
 function cleanup(code) {
@@ -87,7 +107,7 @@ process.stdout.on("resize", () => {
   } catch (_) {}
 });
 
-const FRAME_MS = 33;
+const FRAME_MS = Math.round(1000 / fps);
 const MAX_DT = 0.25;
 let last = process.hrtime.bigint();
 

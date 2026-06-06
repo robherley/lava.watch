@@ -24,17 +24,18 @@ fn parse_env<T: std::str::FromStr>(key: &str) -> Option<T> {
 }
 
 /// Frame interval shared by both terminal transports. `LAVA_FPS` trades
-/// bandwidth for smoothness; 15 is plenty for the slow lava motion and ~halves
-/// the byte rate vs 30. Clamped to a sane range.
+/// bandwidth for smoothness; 24 keeps the slow lava motion fluid without the
+/// byte rate of 60. Clamped to a sane range.
 fn frame_period() -> Duration {
-    let fps = parse_env::<u32>("LAVA_FPS").unwrap_or(15).clamp(1, 60);
+    let fps = parse_env::<u32>("LAVA_FPS").unwrap_or(24).clamp(1, 60);
     Duration::from_micros(1_000_000 / fps as u64)
 }
 
-/// Color quantization, shared by both terminal transports. On by default
-/// (bandwidth); set `LAVA_QUANTIZE=0`/`false` to send full truecolor.
+/// Color quantization, shared by both terminal transports. Off by default
+/// (full truecolor); set `LAVA_QUANTIZE=1`/`true` to snap colors to a coarse
+/// grid and save bandwidth.
 fn quantize() -> bool {
-    parse_env::<bool>("LAVA_QUANTIZE").unwrap_or(true)
+    parse_env::<bool>("LAVA_QUANTIZE").unwrap_or(false)
 }
 
 fn ssh_config() -> lava_ssh::Config {
