@@ -30,7 +30,9 @@ if (fpsEq) {
 if (!Number.isFinite(fps)) fps = 24;
 fps = Math.min(Math.max(Math.round(fps), 1), 60);
 
-const positional = argv.filter((a, i) => !a.startsWith("-") && !consumed.has(i));
+const positional = argv.filter(
+  (a, i) => !a.startsWith("-") && !consumed.has(i)
+);
 const arg = positional[0];
 
 if (argv.includes("--help") || argv.includes("-h")) {
