@@ -10,6 +10,7 @@ const HEAT_RATE: f32 = 0.55; // temp change per second at extremes
 const DAMPING: f32 = 0.985;
 const VEL_SCALE: f32 = 10.0; // converts "velocity units" into pixels/sec at dt
 const RESTITUTION: f32 = 0.55;
+const CENTER_BIAS: f32 = 3.0; // strength of the pull away from the side walls
 
 #[derive(Clone, Debug)]
 pub struct Blob {
@@ -114,7 +115,7 @@ impl Lava {
         let w = self.width as f32;
         let h = self.height as f32;
 
-        for b in &mut self.blobs {
+        for (i, b) in self.blobs.iter_mut().enumerate() {
             // Heat exchange near top/bottom — hot at the bottom, cool at top.
             if b.y > h * 0.82 {
                 b.temp = (b.temp + HEAT_RATE * dt).min(1.0);
@@ -128,8 +129,17 @@ impl Lava {
             b.vy += ay * dt;
 
             // Gentle horizontal drift so blobs don't track straight up/down.
-            let jitter = ((self.time * 0.6) + (b.x * 0.04) + (b.y * 0.03)).sin() * 1.4;
+            // The golden-angle phase per blob keeps the drift decorrelated,
+            // so the whole lamp doesn't slosh to one side in unison.
+            let phase = i as f32 * 2.399;
+            let jitter = ((self.time * 0.6) + phase + (b.x * 0.04) + (b.y * 0.03)).sin() * 1.4;
             b.vx += jitter * dt;
+
+            // Pull toward the horizontal center, growing quadratically with
+            // offset: weak mid-screen, but strong enough near the walls to
+            // beat the jitter, so blobs don't camp on the left or right edge.
+            let off = (b.x - w * 0.5) / (w * 0.5); // -1 at left wall, 1 at right
+            b.vx -= off * off.abs() * CENTER_BIAS * dt;
 
             b.vx *= DAMPING;
             b.vy *= DAMPING;
@@ -236,6 +246,29 @@ mod tests {
             assert_eq!(ba.x.to_bits(), bb.x.to_bits());
             assert_eq!(ba.y.to_bits(), bb.y.to_bits());
         }
+    }
+
+    #[test]
+    fn blobs_unstick_from_side_walls() {
+        let cfg = Config {
+            blob_count: 2,
+            speed: 1.0,
+            seed: 7,
+            ..Default::default()
+        };
+        let mut lava = Lava::with_config(80, 40, cfg);
+        let w = lava.width as f32;
+        // Pin one blob to each wall with no horizontal velocity.
+        lava.blobs[0].x = lava.blobs[0].radius * 0.5;
+        lava.blobs[0].vx = 0.0;
+        lava.blobs[1].x = w - lava.blobs[1].radius * 0.5;
+        lava.blobs[1].vx = 0.0;
+        let start = [lava.blobs[0].x, lava.blobs[1].x];
+        for _ in 0..300 {
+            lava.step(1.0 / 30.0);
+        }
+        assert!(lava.blobs[0].x > start[0] + 1.0, "left blob stayed stuck");
+        assert!(lava.blobs[1].x < start[1] - 1.0, "right blob stayed stuck");
     }
 
     #[test]
